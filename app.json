@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "scheme": "memoryaisle",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -16,10 +16,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.memoryaisle.app",
+      "deploymentTarget": "16.0",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We use your location to show your grocery list when you arrive at a store.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to notify you when you arrive at a store so you never forget your list.",
-        "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns."
+        "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns.",
+        "NSMicrophoneUsageDescription": "Mira uses your microphone to hear what items you want to add to your list."
       }
     },
     "android": {
@@ -34,11 +36,13 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "CAMERA",
+        "RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -60,7 +64,8 @@
       "eas": {
         "projectId": "143688ac-a91a-449d-a4a8-dd6f9663a7a8"
       },
-      "router": {}
+      "router": {},
+      "picovoiceAccessKey": "${PICOVOICE_ACCESS_KEY}"
     },
     "owner": "memoryaisle"
   }
