@@ -74,3 +74,41 @@ export interface ListItemCompletedEvent {
 }
 
 export type RealtimeEvent = ListItemAddedEvent | ListItemCompletedEvent;
+
+// Mira AI types
+export interface MiraItem {
+  name: string;
+  quantity: number;
+}
+
+export type MiraIntent =
+  | 'add_items'
+  | 'remove_item'
+  | 'check_item'
+  | 'get_suggestions'
+  | 'clear_completed'
+  | 'general_chat'
+  | 'unclear'
+  | 'error';
+
+export interface MiraChatResponse {
+  success: boolean;
+  intent: MiraIntent;
+  items: MiraItem[];
+  response: string;
+  error?: string;
+}
+
+export interface MiraSuggestion {
+  itemName: string;
+  reason: string;
+  confidence: number;
+  daysPastDue: number;
+}
+
+export interface MiraSuggestResponse {
+  success: boolean;
+  suggestions: MiraSuggestion[];
+  message: string;
+  error?: string;
+}

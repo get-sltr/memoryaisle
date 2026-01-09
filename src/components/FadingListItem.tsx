@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { StyleSheet, Text, View, Pressable, Animated } from 'react-native';
-import { COLORS, FONTS, FONT_SIZES, SPACING, ANIMATION } from '../constants/theme';
+import { COLORS, FONTS, FONT_SIZES, SPACING, ANIMATION, ThemeColors } from '../constants/theme';
 
 interface FadingListItemProps {
   id: string;
@@ -9,6 +9,7 @@ interface FadingListItemProps {
   addedBy?: string;
   source?: 'manual' | 'ai_suggested' | 'voice';
   onComplete: (id: string) => void;
+  colors?: ThemeColors;
 }
 
 export function FadingListItem({
@@ -18,6 +19,7 @@ export function FadingListItem({
   addedBy,
   source,
   onComplete,
+  colors = COLORS,
 }: FadingListItemProps) {
   const opacity = useRef(new Animated.Value(1)).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -68,17 +70,17 @@ export function FadingListItem({
           <View style={styles.leftSection}>
             {/* Quantity bubble */}
             {quantity > 1 && (
-              <View style={styles.quantityBubble}>
-                <Text style={styles.quantityText}>{quantity}</Text>
+              <View style={[styles.quantityBubble, { backgroundColor: colors.paperDark }]}>
+                <Text style={[styles.quantityText, { color: colors.ink }]}>{quantity}</Text>
               </View>
             )}
 
             {/* Item name */}
-            <Text style={styles.itemName}>{name}</Text>
+            <Text style={[styles.itemName, { color: colors.ink }]}>{name}</Text>
 
             {/* AI badge */}
             {showAiBadge && (
-              <View style={styles.aiBadge}>
+              <View style={[styles.aiBadge, { backgroundColor: colors.primary }]}>
                 <Text style={styles.aiBadgeText}>AI</Text>
               </View>
             )}
@@ -86,12 +88,12 @@ export function FadingListItem({
 
           {/* Added by attribution */}
           {addedBy && (
-            <Text style={styles.addedBy}>{addedBy}</Text>
+            <Text style={[styles.addedBy, { color: colors.inkLight }]}>{addedBy}</Text>
           )}
         </View>
 
         {/* Subtle bottom border */}
-        <View style={styles.border} />
+        <View style={[styles.border, { backgroundColor: colors.paperDark }]} />
       </Pressable>
     </Animated.View>
   );
@@ -117,7 +119,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   quantityBubble: {
-    backgroundColor: COLORS.paperDark,
     borderRadius: 12,
     width: 24,
     height: 24,
@@ -128,16 +129,13 @@ const styles = StyleSheet.create({
   quantityText: {
     fontFamily: FONTS.sans.medium,
     fontSize: FONT_SIZES.xs,
-    color: COLORS.ink,
   },
   itemName: {
     fontFamily: FONTS.serif.regular,
     fontSize: FONT_SIZES.lg,
-    color: COLORS.ink,
     flex: 1,
   },
   aiBadge: {
-    backgroundColor: COLORS.primary,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -151,12 +149,10 @@ const styles = StyleSheet.create({
   addedBy: {
     fontFamily: FONTS.serif.regular,
     fontSize: FONT_SIZES.sm,
-    color: COLORS.inkLight,
     fontStyle: 'italic',
   },
   border: {
     height: 1,
-    backgroundColor: COLORS.paperDark,
     marginLeft: SPACING.xs,
   },
 });

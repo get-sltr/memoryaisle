@@ -1,20 +1,21 @@
 import React from 'react';
 import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import { FadingListItem } from './FadingListItem';
-import { COLORS, FONTS, FONT_SIZES, SPACING } from '../constants/theme';
+import { COLORS, FONTS, FONT_SIZES, SPACING, ThemeColors } from '../constants/theme';
 import type { ListItem } from '../types';
 
 interface GroceryListProps {
   items: ListItem[];
   onItemComplete: (id: string) => void;
+  colors?: ThemeColors;
 }
 
-export function GroceryList({ items, onItemComplete }: GroceryListProps) {
+export function GroceryList({ items, onItemComplete, colors = COLORS }: GroceryListProps) {
   if (items.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>All done!</Text>
-        <Text style={styles.emptySubtext}>Your list is empty</Text>
+        <Text style={[styles.emptyText, { color: colors.ink }]}>All done!</Text>
+        <Text style={[styles.emptySubtext, { color: colors.inkLight }]}>Your list is empty</Text>
       </View>
     );
   }
@@ -33,12 +34,13 @@ export function GroceryList({ items, onItemComplete }: GroceryListProps) {
           addedBy={item.added_by_name}
           source={item.source}
           onComplete={onItemComplete}
+          colors={colors}
         />
       ))}
 
       {/* Item count footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
+        <Text style={[styles.footerText, { color: colors.inkFaded }]}>
           {items.length} {items.length === 1 ? 'item' : 'items'} remaining
         </Text>
       </View>
@@ -59,13 +61,11 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: FONTS.serif.regular,
     fontSize: FONT_SIZES.xxl,
-    color: COLORS.ink,
     marginBottom: SPACING.sm,
   },
   emptySubtext: {
     fontFamily: FONTS.serif.regular,
     fontSize: FONT_SIZES.md,
-    color: COLORS.inkLight,
     fontStyle: 'italic',
   },
   footer: {
@@ -75,7 +75,6 @@ const styles = StyleSheet.create({
   footerText: {
     fontFamily: FONTS.serif.regular,
     fontSize: FONT_SIZES.sm,
-    color: COLORS.inkFaded,
     fontStyle: 'italic',
   },
 });

@@ -20,6 +20,29 @@ export const COLORS = {
   white: '#FFFFFF',
 };
 
+// Dark mode palette - moody, elegant night mode
+export const COLORS_DARK = {
+  // Dark palette
+  paper: '#1A1A1A', // Deep charcoal background
+  paperDark: '#252525', // Slightly lighter for depth
+  ink: '#F5F5F5', // Near-white text
+  inkLight: '#B0B0B0', // Lighter text for secondary
+  inkFaded: '#666666', // Faded text (completed items)
+
+  // Accent colors - slightly muted for dark mode
+  primary: '#D4915A', // Warm golden brown
+  success: '#4CAF50', // Bright green
+  warning: '#FFB74D', // Warm amber
+  error: '#EF5350', // Bright red
+
+  // UI elements
+  shadow: 'rgba(0, 0, 0, 0.4)',
+  overlay: 'rgba(0, 0, 0, 0.7)',
+  white: '#FFFFFF',
+};
+
+export type ThemeColors = typeof COLORS;
+
 export const FONTS = {
   // Serif for that paper list feel
   serif: {
