@@ -35,6 +35,9 @@ yarn-error.*
 *.swo
 *~
 
+# Supabase
+supabase/.temp/
+
 # local env files
 .env*.local
 
