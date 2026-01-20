@@ -13,9 +13,9 @@ export default function Index() {
     );
   }
 
-  // Not authenticated -> Sign in
+  // Not authenticated -> Landing page
   if (!isAuthenticated) {
-    return <Redirect href="/(auth)/sign-in" />;
+    return <Redirect href="/(auth)/landing" />;
   }
 
   // Authenticated but no household -> Household setup

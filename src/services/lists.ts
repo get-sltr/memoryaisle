@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { GroceryList, ListItem } from '../types';
+import { logger } from '../utils/logger';
 
 // Get or create the active list for a household
 export async function getActiveList(householdId: string): Promise<GroceryList | null> {
@@ -34,7 +35,7 @@ export async function getActiveList(householdId: string): Promise<GroceryList | 
 
     return list;
   } catch (error) {
-    console.error('Error getting active list:', error);
+    logger.error('Error getting active list:', error);
     return null;
   }
 }
@@ -61,7 +62,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
       users: undefined,
     }));
   } catch (error) {
-    console.error('Error getting list items:', error);
+    logger.error('Error getting list items:', error);
     return [];
   }
 }
@@ -70,6 +71,11 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
 export async function addItem(
   listId: string,
   name: string,
+  allergyRecord?: {
+    addedByName: string;
+    allergens: string[];
+    confirmedAt: string;
+  },
   quantity: number = 1,
   source: 'manual' | 'ai_suggested' | 'voice' = 'manual'
 ): Promise<ListItem | null> {
@@ -77,15 +83,23 @@ export async function addItem(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    // Build insert object - only include allergy_record if provided
+    const insertData: Record<string, any> = {
+      list_id: listId,
+      name,
+      quantity,
+      added_by: user.id,
+      source,
+    };
+
+    // Only add allergy_record if it exists (column may not exist in all DBs)
+    if (allergyRecord) {
+      insertData.allergy_record = allergyRecord;
+    }
+
     const { data, error } = await supabase
       .from('list_items')
-      .insert({
-        list_id: listId,
-        name,
-        quantity,
-        added_by: user.id,
-        source,
-      })
+      .insert(insertData)
       .select(`
         *,
         users:added_by (name)
@@ -97,10 +111,11 @@ export async function addItem(
     return {
       ...data,
       added_by_name: data.users?.name,
+      allergy_record: data.allergy_record,
       users: undefined,
     };
   } catch (error) {
-    console.error('Error adding item:', error);
+    logger.error('Error adding item:', error);
     return null;
   }
 }
@@ -116,7 +131,7 @@ export async function completeItem(itemId: string): Promise<boolean> {
     if (error) throw error;
     return true;
   } catch (error) {
-    console.error('Error completing item:', error);
+    logger.error('Error completing item:', error);
     return false;
   }
 }
@@ -132,7 +147,7 @@ export async function deleteItem(itemId: string): Promise<boolean> {
     if (error) throw error;
     return true;
   } catch (error) {
-    console.error('Error deleting item:', error);
+    logger.error('Error deleting item:', error);
     return false;
   }
 }
@@ -148,7 +163,7 @@ export async function updateItemQuantity(itemId: string, quantity: number): Prom
     if (error) throw error;
     return true;
   } catch (error) {
-    console.error('Error updating quantity:', error);
+    logger.error('Error updating quantity:', error);
     return false;
   }
 }

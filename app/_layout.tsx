@@ -3,9 +3,12 @@ import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { supabase } from '../src/services/supabase';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import { supabase, STRIPE_PUBLISHABLE_KEY } from '../src/services/supabase';
 import { useAuthStore } from '../src/stores/authStore';
 import { getCurrentUser, getUserHousehold } from '../src/services/auth';
+import { stripeService } from '../src/services/stripe';
+import { errorTracking } from '../src/services/errorTracking';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -16,10 +19,17 @@ export default function RootLayout() {
   useEffect(() => {
     async function initAuth() {
       try {
+        // Initialize error tracking
+        await errorTracking.initialize();
+
+        // Initialize Stripe
+        await stripeService.initialize(STRIPE_PUBLISHABLE_KEY);
+
         const user = await getCurrentUser();
         setUser(user);
 
         if (user) {
+          errorTracking.setUserId(user.id);
           const household = await getUserHousehold();
           setHousehold(household);
         }
@@ -58,9 +68,11 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#FDF5E6' }}>
-      <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false }} />
-    </View>
+    <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
+      <View style={{ flex: 1, backgroundColor: '#FDF5E6' }}>
+        <StatusBar style="dark" />
+        <Stack screenOptions={{ headerShown: false }} />
+      </View>
+    </StripeProvider>
   );
 }

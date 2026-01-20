@@ -1,6 +1,7 @@
 // Geofence Service - Auto-surface list when arriving at a store
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logger } from '../utils/logger';
 
 const STORES_KEY = 'memoryaisle_saved_stores';
 const GEOFENCE_RADIUS = 100; // meters
@@ -52,7 +53,7 @@ class GeofenceService {
       this.savedStores = data ? JSON.parse(data) : [];
       return this.savedStores;
     } catch (error) {
-      console.error('Failed to load stores:', error);
+      logger.error('Failed to load stores:', error);
       return [];
     }
   }
@@ -92,7 +93,7 @@ class GeofenceService {
         address: addressString,
       });
     } catch (error) {
-      console.error('Failed to save current location:', error);
+      logger.error('Failed to save current location:', error);
       return null;
     }
   }
@@ -113,7 +114,7 @@ class GeofenceService {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        console.log('Location permission denied');
+        logger.log('Location permission denied');
         return false;
       }
 
@@ -133,10 +134,10 @@ class GeofenceService {
       );
 
       this.isMonitoring = true;
-      console.log('Geofence monitoring started');
+      logger.log('Geofence monitoring started');
       return true;
     } catch (error) {
-      console.error('Failed to start geofence monitoring:', error);
+      logger.error('Failed to start geofence monitoring:', error);
       return false;
     }
   }
@@ -158,7 +159,7 @@ class GeofenceService {
         // Only trigger arrival if we weren't already at this store
         if (this.currentStoreId !== store.id) {
           this.currentStoreId = store.id;
-          console.log(`Arrived at ${store.name}`);
+          logger.log(`Arrived at ${store.name}`);
           this.onArrival?.(store);
         }
         return;
@@ -179,7 +180,7 @@ class GeofenceService {
         );
         // Trigger departure when user exits (past the radius)
         if (distance > GEOFENCE_RADIUS) {
-          console.log(`Leaving ${leftStore.name}`);
+          logger.log(`Leaving ${leftStore.name}`);
           this.onDeparture?.(leftStore);
           this.currentStoreId = null;
         }
@@ -195,7 +196,7 @@ class GeofenceService {
     }
     this.isMonitoring = false;
     this.onArrival = null;
-    console.log('Geofence monitoring stopped');
+    logger.log('Geofence monitoring stopped');
   }
 
   // Get all saved stores

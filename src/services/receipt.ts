@@ -1,6 +1,7 @@
 // Receipt Scanner Service - Compare receipt to list, find missing items
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
+import { logger } from '../utils/logger';
 
 export interface ReceiptItem {
   name: string;
@@ -20,7 +21,7 @@ class ReceiptService {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        console.log('Camera permission denied');
+        logger.log('Camera permission denied');
         return null;
       }
 
@@ -36,7 +37,7 @@ class ReceiptService {
 
       return result.assets[0].base64;
     } catch (error) {
-      console.error('Failed to capture receipt:', error);
+      logger.error('Failed to capture receipt:', error);
       return null;
     }
   }
@@ -55,7 +56,7 @@ class ReceiptService {
       });
 
       if (error) {
-        console.error('Receipt scan error:', error);
+        logger.error('Receipt scan error:', error);
         return {
           success: false,
           purchasedItems: [],
@@ -71,7 +72,7 @@ class ReceiptService {
         message: data.message || '',
       };
     } catch (error) {
-      console.error('Receipt scan error:', error);
+      logger.error('Receipt scan error:', error);
       return {
         success: false,
         purchasedItems: [],

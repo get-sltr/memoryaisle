@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MemoryAisle — Grocery Shopping, Elevated</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #ede6dd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* Subtle gradient overlay */
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.3) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 1;
+      padding: 20px;
+    }
+
+    .video-container {
+      width: 280px;
+      height: 280px;
+      border-radius: 48px;
+      overflow: hidden;
+      box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.15),
+        0 8px 24px rgba(0, 0, 0, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.5);
+      margin-bottom: 40px;
+    }
+
+    .video-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .brand {
+      margin-bottom: 12px;
+    }
+
+    .brand h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 42px;
+      font-weight: 500;
+      color: #4a4540;
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+    }
+
+    .tagline {
+      font-size: 16px;
+      font-weight: 400;
+      color: #8a817a;
+      font-style: italic;
+      letter-spacing: 0.5px;
+      margin-bottom: 48px;
+    }
+
+    .btn-signin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 48px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #fff;
+      background: linear-gradient(145deg, #c9a962 0%, #b8943d 100%);
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 
+        0 8px 24px rgba(185, 148, 61, 0.35),
+        0 2px 8px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-signin:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 
+        0 12px 32px rgba(185, 148, 61, 0.45),
+        0 4px 12px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-signin:active {
+      transform: translateY(0) scale(0.98);
+    }
+
+    .footer {
+      position: absolute;
+      bottom: 32px;
+      font-size: 12px;
+      color: #a8a099;
+      letter-spacing: 0.5px;
+    }
+
+    .footer a {
+      color: #a8a099;
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .footer a:hover {
+      color: #c9a962;
+    }
+
+    /* Mobile adjustments */
+    @media (max-width: 480px) {
+      .video-container {
+        width: 220px;
+        height: 220px;
+        border-radius: 40px;
+        margin-bottom: 32px;
+      }
+
+      .brand h1 {
+        font-size: 34px;
+      }
+
+      .tagline {
+        font-size: 14px;
+        margin-bottom: 40px;
+      }
+
+      .btn-signin {
+        padding: 16px 40px;
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="video-container">
+      <video id="logoVideo" autoplay loop muted playsinline>
+        <source src="landpagelogo.mp4" type="video/mp4">
+      </video>
+    </div>
+
+    <div class="brand">
+      <h1>MemoryAisle</h1>
+    </div>
+    
+    <p class="tagline">Grocery Shopping, Elevated</p>
+
+    <a href="/signin" class="btn-signin">Sign In</a>
+  </div>
+
+  <div class="footer">
+    <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · © 2025 SLTR Digital LLC
+  </div>
+</body>
+<script>
+  // Force video to play on load
+  window.addEventListener('load', function() {
+    const video = document.getElementById('logoVideo');
+    video.play().catch(function(error) {
+      // If autoplay blocked, play on first user interaction
+      document.body.addEventListener('click', function() {
+        video.play();
+      }, { once: true });
+    });
+  });
+</script>
+</html>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, COLORS_DARK, ThemeColors } from '../constants/theme';
+import { logger } from '../utils/logger';
 
 interface ThemeState {
   isDark: boolean;
@@ -31,7 +32,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
         colors: isDark ? COLORS_DARK : COLORS,
       });
     } catch (error) {
-      console.error('Error loading theme:', error);
+      logger.error('Error loading theme:', error);
     }
   },
 }));

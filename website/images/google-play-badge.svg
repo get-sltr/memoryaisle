@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 135 40" width="135" height="40">
+  <rect width="135" height="40" rx="5" fill="#000"/>
+  <text x="47" y="12" fill="#fff" font-family="system-ui, -apple-system, sans-serif" font-size="6" text-transform="uppercase">Get it on</text>
+  <text x="47" y="26" fill="#fff" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Google Play</text>
+  <g transform="translate(12, 8) scale(0.6)">
+    <path fill="#00D4FF" d="M6 3.2L21.5 13 6 22.8z"/>
+    <path fill="#FFCE00" d="M6 22.8l15.5-9.8 5 3.1L6 28z"/>
+    <path fill="#FF3A44" d="M26.5 16.1l-5-3.1L6 3.2V28l20.5-11.9z"/>
+    <path fill="#00F076" d="M6 3.2l20.5 12.9-5 3.1L6 3.2z"/>
+  </g>
+</svg>

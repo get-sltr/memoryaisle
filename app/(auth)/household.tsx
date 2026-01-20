@@ -6,17 +6,30 @@ import {
   Pressable,
   StyleSheet,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
 import { createHousehold, joinHousehold } from '../../src/services/auth';
 import { useAuthStore } from '../../src/stores/authStore';
+import { PaywallPrompt } from '../../src/components/PaywallPrompt';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '../../src/constants/theme';
+
+const HOUSEHOLD_SIZE_OPTIONS = [
+  { value: 1, label: '1', description: 'Just me' },
+  { value: 2, label: '2', description: 'Couple' },
+  { value: 3, label: '3', description: 'Small family' },
+  { value: 4, label: '4', description: 'Family' },
+  { value: 5, label: '5', description: 'Large family' },
+  { value: 6, label: '6+', description: 'Extended' },
+];
 
 export default function HouseholdSetup() {
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const [householdName, setHouseholdName] = useState('');
+  const [householdSize, setHouseholdSize] = useState<number | null>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const { setHousehold } = useAuthStore();
 
@@ -26,8 +39,13 @@ export default function HouseholdSetup() {
       return;
     }
 
+    if (!householdSize) {
+      Alert.alert('Error', 'Please select your household size');
+      return;
+    }
+
     setLoading(true);
-    const { household, error } = await createHousehold(householdName.trim());
+    const { household, error } = await createHousehold(householdName.trim(), householdSize);
     setLoading(false);
 
     if (error || !household) {
@@ -46,10 +64,25 @@ export default function HouseholdSetup() {
     }
 
     setLoading(true);
-    const { household, error } = await joinHousehold(inviteCode.trim());
+    const { household, error, needsPremium } = await joinHousehold(inviteCode.trim());
     setLoading(false);
 
     if (error || !household) {
+      if (needsPremium) {
+        // Show paywall for the household owner to upgrade
+        Alert.alert(
+          'Premium Required',
+          error || 'The household owner needs to upgrade to Premium to add more members.',
+          [
+            { text: 'OK', style: 'cancel' },
+            {
+              text: 'Learn More',
+              onPress: () => setShowPaywall(true),
+            },
+          ]
+        );
+        return;
+      }
       Alert.alert('Error', error || 'Failed to join household');
       return;
     }
@@ -89,7 +122,7 @@ export default function HouseholdSetup() {
 
       {/* Create Household */}
       {mode === 'create' && (
-        <View style={styles.form}>
+        <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
           <Text style={styles.label}>Household Name</Text>
           <TextInput
             style={styles.input}
@@ -98,6 +131,38 @@ export default function HouseholdSetup() {
             value={householdName}
             onChangeText={setHouseholdName}
           />
+
+          <Text style={styles.label}>How many people in your household?</Text>
+          <View style={styles.sizeGrid}>
+            {HOUSEHOLD_SIZE_OPTIONS.map((option) => (
+              <Pressable
+                key={option.value}
+                style={[
+                  styles.sizeOption,
+                  householdSize === option.value && styles.sizeOptionSelected,
+                ]}
+                onPress={() => setHouseholdSize(option.value)}
+              >
+                <Text
+                  style={[
+                    styles.sizeNumber,
+                    householdSize === option.value && styles.sizeNumberSelected,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+                <Text
+                  style={[
+                    styles.sizeDescription,
+                    householdSize === option.value && styles.sizeDescriptionSelected,
+                  ]}
+                >
+                  {option.description}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
           <Text style={styles.hint}>
             You'll get an invite code to share with family members
           </Text>
@@ -111,7 +176,7 @@ export default function HouseholdSetup() {
               {loading ? 'Creating...' : 'Create Household'}
             </Text>
           </Pressable>
-        </View>
+        </ScrollView>
       )}
 
       {/* Join Household */}
@@ -142,6 +207,15 @@ export default function HouseholdSetup() {
           </Pressable>
         </View>
       )}
+
+      {/* Paywall for premium family limit */}
+      <PaywallPrompt
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        feature="familyMembers"
+        title="Need More Family Members?"
+        description="The household owner needs to upgrade to Premium to add more than 2 family members."
+      />
     </View>
   );
 }
@@ -220,11 +294,51 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginBottom: SPACING.lg,
   },
+  sizeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  sizeOption: {
+    width: '30%',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.paperDark,
+    borderRadius: 12,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    alignItems: 'center',
+  },
+  sizeOptionSelected: {
+    backgroundColor: COLORS.primary + '15',
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+  },
+  sizeNumber: {
+    fontFamily: FONTS.sans.bold,
+    fontSize: FONT_SIZES.xl,
+    color: COLORS.ink,
+    marginBottom: 2,
+  },
+  sizeNumberSelected: {
+    color: COLORS.primary,
+  },
+  sizeDescription: {
+    fontFamily: FONTS.serif.regular,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.inkLight,
+    textAlign: 'center',
+  },
+  sizeDescriptionSelected: {
+    color: COLORS.primary,
+  },
   button: {
     backgroundColor: COLORS.primary,
     borderRadius: 8,
     paddingVertical: SPACING.md,
     alignItems: 'center',
+    marginBottom: SPACING.xl,
   },
   buttonDisabled: {
     opacity: 0.6,

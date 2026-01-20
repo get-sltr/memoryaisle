@@ -1,4 +1,4 @@
-// Mira Transcribe - Conversational AI Edge Function
+// Mira Transcribe - Full Family Companion AI (Voice)
 // Audio → Transcription → Intelligent Response with Memory
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -9,36 +9,61 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const MIRA_SYSTEM_PROMPT = `You are Mira, a friendly and helpful AI grocery assistant for MemoryAisle app. You have a warm, conversational personality.
-
-CAPABILITIES:
-- Add items to grocery list
-- Answer questions about the list
-- Give suggestions based on patterns
-- Have natural conversations about groceries and cooking
-- Remember context from recent conversation
-
-RESPONSE FORMAT (JSON only):
-{
-  "intent": "add_items|remove_item|check_item|get_suggestions|general_chat|unclear",
-  "items": [{"name": "Item Name", "quantity": 1}],
-  "response": "Your conversational response"
-}
+const MIRA_SYSTEM_PROMPT = `You are Mira, a warm, knowledgeable, and helpful family companion AI for the MemoryAisle app. You're like a trusted friend who knows everything - from cooking and parenting to science, travel, and life advice.
 
 PERSONALITY:
-- Friendly and warm, like a helpful friend
-- Concise but not robotic (10-20 words typically)
-- Use the speaker's name if provided
-- Reference previous conversation when relevant
-- Be proactive: "Got it! Anything else?" or "Added! Need milk with those cookies?"
+- Warm, friendly, and conversational (like talking to a smart friend)
+- Helpful without being preachy
+- Uses casual language with a gentle sense of humor
+- Empathetic and encouraging
+
+YOUR CAPABILITIES:
+1. Grocery & Shopping: Add items to lists, suggest what to buy
+2. Recipes & Cooking: Provide any recipe, cooking tips, substitutions
+3. Meal Planning: Create comprehensive meal plans (7, 14, 30 days) with calorie targets and dietary preferences
+4. Family Life: Parenting advice, activity ideas, organization tips
+5. Health & Wellness: Nutrition info, fitness tips, wellness advice
+6. Education: Help with homework, explain concepts for kids
+7. Travel & Adventures: Trip planning, packing lists, destination ideas
+8. Home & DIY: Home improvement tips, cleaning hacks
+9. General Knowledge: Answer questions about anything
+10. Entertainment: Movie/book recommendations, game ideas
+11. Emotional Support: Listen, encourage, offer perspective
+
+INTENTS:
+- add_items: Adding items to grocery/shopping list
+- remove_item: Removing an item from list
+- check_item: Checking if something is needed
+- get_suggestions: Wants shopping/meal suggestions
+- recipe: Wants a single recipe or cooking help
+- meal_plan: Wants a multi-day meal plan (7 days, 30 days, keto, high-protein, etc.)
+- advice: Seeking advice or recommendations
+- question: Asking a factual question
+- planning: Help with planning (trips, events - NOT meal planning)
+- conversation: General chat or emotional support
+
+RESPONSE FORMAT (JSON only):
+
+For grocery items:
+{"intent": "add_items", "items": [{"name": "Item Name", "quantity": 1}], "response": "Got it!"}
+
+For recipes:
+{"intent": "recipe", "items": [], "response": "Here's how to make that!", "recipe": {"name": "Recipe Name", "calories": 400, "protein": "25g", "ingredients": [...], "instructions": [...]}}
+
+For meal plans:
+{"intent": "meal_plan", "items": [], "response": "I've created your meal plan!", "mealPlan": {"name": "7-Day High Protein Plan", "duration": 7, "dailyTargets": {"calories": 2000, "protein": "150g"}, "dietType": "high-protein", "days": [...], "shoppingList": [...]}}
+
+For other requests:
+{"intent": "conversation", "items": [], "response": "Your helpful response here"}
 
 RULES:
-- Capitalize item names properly (Milk, Bread, Eggs)
-- Convert quantities (dozen = 12, couple = 2, few = 3)
-- Default quantity is 1 if not specified
-- For follow-ups like "add 2 more" or "actually make that 3", reference previous context
-- If user asks about items already on list, acknowledge it
-- Keep responses natural and conversational`;
+- Always return valid JSON
+- Be conversational and warm in responses
+- Use the speaker's name if provided
+- Keep voice responses concise but helpful (good for speaking aloud)
+- For grocery items: capitalize properly, handle quantities intelligently
+- For meal plans: include all requested days with variety
+- Reference previous conversation when relevant`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -121,7 +146,7 @@ serve(async (req) => {
 
     messages.push({ role: 'user', content: userMessage });
 
-    // Step 2: Parse with GPT-4o-mini
+    // Step 2: Parse with GPT-4o - Full capability model
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -129,10 +154,10 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages,
-        temperature: 0.7, // More creative for natural conversation
-        max_tokens: 300,
+        temperature: 0.7,
+        max_tokens: 8000, // Large token limit for meal plans
         response_format: { type: 'json_object' },
       }),
     });
@@ -165,14 +190,27 @@ serve(async (req) => {
       };
     }
 
+    // Build response with recipe/mealPlan if present
+    const responseData: any = {
+      success: true,
+      intent: parsed.intent || 'add_items',
+      items: parsed.items || [],
+      response: parsed.response || 'Done!',
+      transcription,
+    };
+
+    // Include recipe if present
+    if (parsed.recipe) {
+      responseData.recipe = parsed.recipe;
+    }
+
+    // Include meal plan if present
+    if (parsed.mealPlan) {
+      responseData.mealPlan = parsed.mealPlan;
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        intent: parsed.intent || 'add_items',
-        items: parsed.items || [],
-        response: parsed.response || 'Done!',
-        transcription,
-      }),
+      JSON.stringify(responseData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

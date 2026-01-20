@@ -1,6 +1,7 @@
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { supabase } from './supabase';
+import { logger } from '../utils/logger';
 
 // Mira - MemoryAisle's AI Assistant
 // Full conversational AI with voice, memory, and personality
@@ -17,12 +18,75 @@ export interface ConversationTurn {
   timestamp: number;
 }
 
+export interface MiraRecipe {
+  name: string;
+  description?: string;
+  prepTime?: string;
+  cookTime?: string;
+  servings?: number;
+  calories?: number;
+  protein?: string;
+  carbs?: string;
+  fat?: string;
+  ingredients: string[];
+  instructions: string[];
+  tips?: string[];
+}
+
+export interface MiraMeal {
+  name: string;
+  calories: number;
+  description: string;
+  ingredients: string[];
+  macros?: {
+    protein: string;
+    carbs: string;
+    fat: string;
+  };
+  prepTime?: string;
+}
+
+export interface MiraDayPlan {
+  day: number;
+  dayName?: string;
+  meals: {
+    breakfast: MiraMeal;
+    lunch: MiraMeal;
+    dinner: MiraMeal;
+    snacks?: MiraMeal;
+  };
+  totalCalories: number;
+  totalMacros?: {
+    protein: string;
+    carbs: string;
+    fat: string;
+  };
+}
+
+export interface MiraMealPlan {
+  name: string;
+  description: string;
+  duration: number;
+  dailyTargets: {
+    calories: number;
+    protein: string;
+    carbs: string;
+    fat: string;
+  };
+  dietType: string;
+  days: MiraDayPlan[];
+  shoppingList: string[];
+  tips: string[];
+}
+
 export interface MiraChatResponse {
   success: boolean;
-  intent: 'add_items' | 'remove_item' | 'check_item' | 'get_suggestions' | 'clear_completed' | 'general_chat' | 'unclear' | 'error';
+  intent: 'add_items' | 'remove_item' | 'check_item' | 'get_suggestions' | 'clear_completed' | 'general_chat' | 'recipe' | 'meal_plan' | 'advice' | 'question' | 'planning' | 'conversation' | 'unclear' | 'error';
   items: MiraItem[];
   response: string;
   transcription?: string;
+  recipe?: MiraRecipe;
+  mealPlan?: MiraMealPlan;
   error?: string;
 }
 
@@ -135,10 +199,21 @@ class MiraAssistant {
       // Stop any ongoing speech
       await this.stopSpeaking();
 
+      // Clean up any existing recording first
+      if (this.recording) {
+        try {
+          await this.recording.stopAndUnloadAsync();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        this.recording = null;
+        this.isRecording = false;
+      }
+
       // Request permissions
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        console.error('Audio permission not granted');
+        logger.error('Audio permission not granted');
         return false;
       }
 
@@ -157,7 +232,10 @@ class MiraAssistant {
       this.isRecording = true;
       return true;
     } catch (error) {
-      console.error('Failed to start recording:', error);
+      logger.error('Failed to start recording:', error);
+      // Clean up on error
+      this.recording = null;
+      this.isRecording = false;
       return false;
     }
   }
@@ -212,7 +290,7 @@ class MiraAssistant {
 
       return result;
     } catch (error: any) {
-      console.error('Failed to stop recording:', error);
+      logger.error('Failed to stop recording:', error);
       return {
         success: false,
         intent: 'error',
@@ -294,7 +372,7 @@ class MiraAssistant {
       });
 
       if (error) {
-        console.error('Mira error:', error);
+        logger.error('Mira error:', error);
         return {
           success: false,
           intent: 'error',
@@ -312,7 +390,7 @@ class MiraAssistant {
         transcription: data.transcription,
       };
     } catch (error: any) {
-      console.error('Mira error:', error);
+      logger.error('Mira error:', error);
       return {
         success: false,
         intent: 'error',
@@ -330,6 +408,7 @@ class MiraAssistant {
       currentListItems?: string[];
       recentPurchases?: string[];
       speakerName?: string;
+      familyDietaryRestrictions?: string;
     }
   ): Promise<MiraChatResponse> {
     try {
@@ -348,7 +427,7 @@ class MiraAssistant {
       });
 
       if (error) {
-        console.error('AI processing error:', error);
+        logger.error('AI processing error:', error);
         return {
           success: false,
           intent: 'error',
@@ -358,11 +437,13 @@ class MiraAssistant {
         };
       }
 
-      const result = {
+      const result: MiraChatResponse = {
         success: data.success,
         intent: data.intent,
         items: data.items || [],
         response: data.response,
+        recipe: data.recipe || undefined,
+        mealPlan: data.mealPlan || undefined,
       };
 
       // Add response to history
@@ -372,7 +453,7 @@ class MiraAssistant {
 
       return result;
     } catch (error: any) {
-      console.error('AI processing error:', error);
+      logger.error('AI processing error:', error);
       return {
         success: false,
         intent: 'error',
@@ -409,7 +490,7 @@ class MiraAssistant {
       });
 
       if (error) {
-        console.error('Suggestions error:', error);
+        logger.error('Suggestions error:', error);
         return {
           success: false,
           suggestions: [],
@@ -424,7 +505,7 @@ class MiraAssistant {
         message: data.message,
       };
     } catch (error: any) {
-      console.error('Suggestions error:', error);
+      logger.error('Suggestions error:', error);
       return {
         success: false,
         suggestions: [],
@@ -456,19 +537,123 @@ class MiraAssistant {
   getIsRecording(): boolean {
     return this.isRecording;
   }
+
+  // =============================================
+  // DIRECT DICTATION MODE - Fast item entry
+  // =============================================
+
+  // Quick dictate - just items, no conversation
+  async quickDictate(): Promise<{
+    success: boolean;
+    items: MiraItem[];
+    transcription: string;
+    message: string;
+  }> {
+    if (!this.recording || !this.isRecording) {
+      return {
+        success: false,
+        items: [],
+        transcription: '',
+        message: 'Not recording',
+      };
+    }
+
+    try {
+      this.isRecording = false;
+      await this.recording.stopAndUnloadAsync();
+
+      const uri = this.recording.getURI();
+      this.recording = null;
+
+      if (!uri) {
+        return {
+          success: false,
+          items: [],
+          transcription: '',
+          message: 'No audio recorded',
+        };
+      }
+
+      // Read file as base64
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64Data = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      // Call fast dictation Edge Function
+      const { data, error } = await supabase.functions.invoke('mira-dictate', {
+        body: {
+          audio: base64,
+          filename: 'audio.m4a',
+        },
+      });
+
+      if (error) {
+        logger.error('Dictation error:', error);
+        return {
+          success: false,
+          items: [],
+          transcription: '',
+          message: 'Something went wrong',
+        };
+      }
+
+      return {
+        success: data.success,
+        items: data.items || [],
+        transcription: data.transcription || '',
+        message: data.message || 'Done!',
+      };
+    } catch (error: any) {
+      logger.error('Dictation error:', error);
+      return {
+        success: false,
+        items: [],
+        transcription: '',
+        message: 'Something went wrong',
+      };
+    }
+  }
+
+  // Quick dictate and speak result
+  async quickDictateAndRespond(): Promise<{
+    success: boolean;
+    items: MiraItem[];
+    transcription: string;
+    message: string;
+  }> {
+    const result = await this.quickDictate();
+
+    if (result.success && result.items.length > 0) {
+      await this.speak(result.message);
+    } else if (!result.success) {
+      await this.speak("Didn't catch that. Try again?");
+    }
+
+    return result;
+  }
 }
 
 // Export singleton instance
 export const mira = new MiraAssistant();
 
-// Mira's personality responses
+// Mira's personality responses - Full Family Companion
 export const miraResponses = {
   greeting: [
-    "Hey! What do you need?",
-    "I'm listening!",
-    "What can I add for you?",
-    "Go ahead, I'm ready!",
-    "What can I get for you?",
+    "Hey! What's on your mind?",
+    "Hi there! How can I help?",
+    "I'm all ears! What do you need?",
+    "Hey! What can I do for you today?",
+    "Hi! Ready when you are!",
   ],
   added: [
     "Got it!",
@@ -479,17 +664,18 @@ export const miraResponses = {
   ],
   notUnderstood: [
     "Sorry, I didn't catch that. Try again?",
-    "Hmm, couldn't hear you. One more time?",
+    "Hmm, couldn't quite hear you. One more time?",
     "Could you repeat that?",
   ],
   error: [
     "Oops, something went wrong. Try again?",
-    "Had a hiccup there. One more time?",
+    "Had a little hiccup there. One more time?",
   ],
   thinking: [
     "Let me think...",
     "Working on it...",
-    "One sec...",
+    "Give me a sec...",
+    "Let me look into that...",
   ],
   suggestions: [
     "Here's what you might need!",
@@ -497,9 +683,20 @@ export const miraResponses = {
     "Looks like you're running low on...",
   ],
   followUp: [
-    "Anything else?",
+    "Anything else I can help with?",
     "What else?",
-    "Need anything more?",
+    "Need anything else?",
+    "Happy to help with more!",
+  ],
+  recipe: [
+    "Ooh, good choice! Here's the recipe...",
+    "I love that dish! Here's how to make it...",
+    "Great pick! Here's my recipe for you...",
+  ],
+  advice: [
+    "Here's what I think...",
+    "Let me share some thoughts...",
+    "Great question! Here's my take...",
   ],
 };
 

@@ -6,12 +6,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
     "scheme": "memoryaisle",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FDF5E6"
+      "backgroundColor": "#F8F9FB"
     },
     "ios": {
       "supportsTablet": true,
@@ -21,13 +20,14 @@
         "NSLocationWhenInUseUsageDescription": "We use your location to show your grocery list when you arrive at a store.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to notify you when you arrive at a store so you never forget your list.",
         "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns.",
-        "NSMicrophoneUsageDescription": "Mira uses your microphone to hear what items you want to add to your list."
+        "NSMicrophoneUsageDescription": "Mira uses your microphone to hear what items you want to add to your list.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FDF5E6"
+        "backgroundColor": "#F8F9FB"
       },
       "package": "com.memoryaisle.app",
       "edgeToEdgeEnabled": true,
@@ -52,11 +52,30 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "sltr",
+          "project": "memoryaisle"
+        }
+      ],
       [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Memoryaisle to use your location to auto-show your list at stores.",
           "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          },
+          "android": {
+            "minSdkVersion": 24
+          }
         }
       ]
     ],

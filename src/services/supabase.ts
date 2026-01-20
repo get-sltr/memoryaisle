@@ -6,6 +6,9 @@ import 'react-native-url-polyfill/auto';
 const SUPABASE_URL = 'https://eponitwsgjjgrdbmgwyr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwb25pdHdzZ2pqZ3JkYm1nd3lyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc2NTU4ODIsImV4cCI6MjA4MzIzMTg4Mn0.xTrw44O7gua7mnLhDMmm3TtrmJonN5eysI1FwG6W09M';
 
+// Stripe publishable key (safe for client-side)
+export const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Som4i3FbtW6sYG8cSeQ5n8HC0PfVSBTI9bwTSCY6JXOcrcyF7e4JAvWJWH8snD3wfJxs7YQN2rXsqm3R12oavTb00EMigX29W';
+
 // Custom storage adapter for React Native using SecureStore
 const ExpoSecureStoreAdapter = {
   getItem: async (key: string): Promise<string | null> => {

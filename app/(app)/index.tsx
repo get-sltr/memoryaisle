@@ -1,28 +1,36 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
+  SectionList,
+  ScrollView,
   Modal,
   Share,
+  Alert,
+  Image,
+  LayoutAnimation,
+  UIManager,
+  Platform,
+  Animated,
 } from 'react-native';
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import { router } from 'expo-router';
-import { GroceryList } from '../../src/components/GroceryList';
-import { MiraSuggestions } from '../../src/components/MiraSuggestions';
-import { MiraChat } from '../../src/components/MiraChat';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { StoreArrivalBanner } from '../../src/components/StoreArrivalBanner';
 import { MissingItemsAlert } from '../../src/components/MissingItemsAlert';
 import { useAuthStore } from '../../src/stores/authStore';
 import { geofenceService, SavedStore } from '../../src/services/geofence';
-import { receiptService } from '../../src/services/receipt';
 import { signOut } from '../../src/services/auth';
 import {
   getActiveList,
@@ -31,16 +39,60 @@ import {
   completeItem,
   subscribeToList,
 } from '../../src/services/lists';
-import { mira, getRandomResponse } from '../../src/services/mira';
-import type { MiraSuggestion, ConversationTurn } from '../../src/services/mira';
-import { wakeWord } from '../../src/services/wakeWord';
-import { COLORS, FONTS, FONT_SIZES, SPACING } from '../../src/constants/theme';
+import { mira } from '../../src/services/mira';
+import {
+  COLORS,
+  FONTS,
+  FONT_SIZES,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+  NAV_HEIGHT,
+} from '../../src/constants/theme';
 import { useThemeStore } from '../../src/stores/themeStore';
+import {
+  VoiceIcon,
+  FamilyIcon,
+  SunIcon,
+  MoonIcon,
+} from '../../src/components/icons';
+import {
+  FamilyGlassIcon,
+  LocationGlassIcon,
+  LogoutGlassIcon,
+  GlassIconWrapper,
+  CategoryIcons,
+  AllergyBadgeIcon,
+  ListGlassIcon,
+  PlanGlassIcon,
+  FavoritesGlassIcon,
+  RecipeGlassIcon,
+  ProfileGlassIcon,
+  FamilyHomeGlassIcon,
+  CalendarGlassIcon,
+  TripGlassIcon,
+} from '../../src/components/GlassIcons';
+import {
+  ALLERGENS,
+  checkSelfAllergen,
+  formatSelfAllergyAlert,
+} from '../../src/utils/allergenDetection';
+import {
+  groupItemsByCategory,
+  getCategoryInfo,
+  CATEGORY_ORDER,
+  preloadKeywords,
+  invalidateKeywordCache,
+  type GroceryCategory,
+} from '../../src/utils/categoryDetection';
 import type { ListItem, GroceryList as GroceryListType } from '../../src/types';
+import { logger } from '../../src/utils/logger';
 
 export default function MainList() {
   const { user, household, setUser, setHousehold } = useAuthStore();
   const { colors, isDark, toggleTheme, loadTheme } = useThemeStore();
+  const insets = useSafeAreaInsets();
+
   const [list, setList] = useState<GroceryListType | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
   const [newItemName, setNewItemName] = useState('');
@@ -48,40 +100,92 @@ export default function MainList() {
   const [showQR, setShowQR] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [miraStatus, setMiraStatus] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<MiraSuggestion[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
-  const [wakeWordActive, setWakeWordActive] = useState(false);
-  const [conversation, setConversation] = useState<ConversationTurn[]>([]);
-  const [isThinking, setIsThinking] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [arrivedStore, setArrivedStore] = useState<SavedStore | null>(null);
   const [showSaveStore, setShowSaveStore] = useState(false);
   const [storeNameInput, setStoreNameInput] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [missingItems, setMissingItems] = useState<string[]>([]);
+  const [isDictating, setIsDictating] = useState(false);
+  const [isProcessingDictation, setIsProcessingDictation] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [keywordsReady, setKeywordsReady] = useState(false);
 
-  // Load theme preference
-  useEffect(() => {
-    loadTheme();
+  // Toggle category collapse with animation
+  const toggleCategory = useCallback((categoryId: string) => {
+    LayoutAnimation.configureNext({
+      duration: 300,
+      create: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+      },
+      delete: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+    });
+
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
   }, []);
 
-  // Geofence monitoring - auto-surface list at store
+  // Stats
+  const totalItems = items.length;
+  const completedItems = 0; // TODO: Track completed items
+  const familyMembers = household?.members?.length || household?.member_count || 1;
+
+  // Memoized section data for SectionList - prevents recalculation on every render
+  // keywordsReady dependency ensures re-categorization after keywords load
+  const sections = useMemo(() => {
+    const groupedItems = groupItemsByCategory(items);
+    return CATEGORY_ORDER
+      .filter((categoryId) => {
+        const categoryItems = groupedItems.get(categoryId);
+        return categoryItems && categoryItems.length > 0;
+      })
+      .map((categoryId) => {
+        const categoryItems = groupedItems.get(categoryId)!;
+        const categoryInfo = getCategoryInfo(categoryId);
+        return {
+          categoryId,
+          categoryInfo,
+          data: categoryItems,
+        };
+      });
+  }, [items, keywordsReady]);
+
+  // Load theme preference and preload category keywords
+  useEffect(() => {
+    loadTheme();
+    // Preload category keywords from Supabase, then trigger re-categorization
+    preloadKeywords().then(() => {
+      setKeywordsReady(true);
+    });
+  }, []);
+
+  // Geofence monitoring
   useEffect(() => {
     const startGeofence = async () => {
       await geofenceService.startMonitoring(
-        // On arrival
         (store) => {
           setArrivedStore(store);
           mira.speak(`You're at ${store.name}. Here's your list!`);
           setTimeout(() => setArrivedStore(null), 10000);
         },
-        // On departure - remind to scan receipt
         (store) => {
           if (items.length > 0) {
             mira.speak("Wait! Scan your receipt before you leave to check if you forgot anything.");
             setMiraStatus("Scan receipt before leaving!");
-            // Keep the reminder visible longer
             setTimeout(() => setMiraStatus(null), 8000);
           }
         }
@@ -89,209 +193,39 @@ export default function MainList() {
     };
 
     startGeofence();
-
-    return () => {
-      geofenceService.stopMonitoring();
-    };
+    return () => geofenceService.stopMonitoring();
   }, [items.length]);
 
-  // Wake word detection - "Hey Mira"
+  // Cleanup Mira on unmount
   useEffect(() => {
-    const startWakeWord = async () => {
-      const started = await wakeWord.start(
-        // On wake word detected
-        async () => {
-          setWakeWordActive(true);
-
-          // Pause wake word while Mira listens
-          await wakeWord.pause();
-
-          // Greet user with TTS
-          setMiraStatus("What can I get for you?");
-          await mira.greet(); // Speaks greeting
-
-          // Start Mira recording after greeting
-          const recordingStarted = await mira.startListening();
-          if (recordingStarted) {
-            setIsListening(true);
-            // Auto-stop after 5 seconds of listening
-            setTimeout(async () => {
-              if (mira.getIsRecording()) {
-                await handleMiraResponse();
-              }
-            }, 5000);
-          } else {
-            setMiraStatus("Couldn't start listening");
-            await mira.speak("Sorry, I couldn't start listening.");
-            setTimeout(() => setMiraStatus(null), 2000);
-            await wakeWord.resume();
-            setWakeWordActive(false);
-          }
-        },
-        // On error
-        (error) => {
-          console.error('Wake word error:', error);
-        }
-      );
-
-      if (started) {
-        console.log(`Say "${wakeWord.getWakeWordName()}" to activate!`);
-      }
-    };
-
-    startWakeWord();
-
-    // Cleanup on unmount
     return () => {
-      wakeWord.stop();
       mira.stopSpeaking();
     };
   }, []);
 
-  // Handle Mira response after wake word activation
-  const handleMiraResponse = async () => {
+  // Dictation
+  const handleDictate = async () => {
     if (!list) return;
-
-    setIsListening(false);
-    setIsThinking(true);
-    setMiraStatus(getRandomResponse('thinking'));
-
-    const context = {
-      currentListItems: items.map((i) => i.name),
-    };
-
-    // Use the new conversational method that speaks the response
-    setIsSpeaking(true);
-    const result = await mira.stopListeningAndRespond(context);
-    setIsThinking(false);
-    setIsSpeaking(false);
-
-    // Update conversation display
-    setConversation(mira.getConversationHistory());
-
-    if (result.success) {
-      // Handle based on intent
-      if (result.intent === 'add_items' && result.items.length > 0) {
+    if (isDictating) {
+      setIsDictating(false);
+      setMiraStatus('Processing...');
+      const result = await mira.quickDictateAndRespond();
+      if (result.success && result.items.length > 0) {
         for (const item of result.items) {
-          await addItem(list.id, item.name, item.quantity, 'voice');
+          await addItem(list.id, item.name, undefined, item.quantity || 1, 'voice');
         }
-      } else if (result.intent === 'get_suggestions') {
-        loadSuggestions();
-      }
-
-      setMiraStatus(result.response);
-
-      // Keep status visible longer for conversation
-      setTimeout(() => setMiraStatus(null), 3000);
-    } else {
-      setMiraStatus(getRandomResponse('notUnderstood'));
-      await mira.speak(getRandomResponse('notUnderstood'));
-      setTimeout(() => setMiraStatus(null), 2500);
-    }
-
-    // Resume wake word detection
-    await wakeWord.resume();
-    setWakeWordActive(false);
-  };
-
-  // Load suggestions on mount and when household changes
-  const loadSuggestions = useCallback(async () => {
-    if (!household?.id) return;
-
-    setSuggestionsLoading(true);
-    try {
-      const result = await mira.getSuggestions(household.id);
-      if (result.success) {
-        // Filter out dismissed suggestions
-        const filtered = result.suggestions.filter(
-          (s) => !dismissedSuggestions.has(s.itemName)
-        );
-        setSuggestions(filtered);
-      }
-    } catch (error) {
-      console.error('Failed to load suggestions:', error);
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  }, [household?.id, dismissedSuggestions]);
-
-  useEffect(() => {
-    loadSuggestions();
-  }, [loadSuggestions]);
-
-  // Handle adding a suggested item
-  const handleAddSuggestion = async (itemName: string) => {
-    if (!list) return;
-
-    // Remove from suggestions immediately
-    setSuggestions((current) => current.filter((s) => s.itemName !== itemName));
-
-    // Add to list
-    await addItem(list.id, itemName, 1, 'ai_suggested');
-  };
-
-  // Handle dismissing a suggestion
-  const handleDismissSuggestion = (itemName: string) => {
-    setDismissedSuggestions((current) => new Set(current).add(itemName));
-    setSuggestions((current) => current.filter((s) => s.itemName !== itemName));
-  };
-
-  // Handle Mira AI button
-  const handleMira = async () => {
-    if (!list) return;
-
-    if (isListening) {
-      // Stop listening and process with GPT-4
-      setMiraStatus(getRandomResponse('thinking'));
-
-      // Get current list context
-      const context = {
-        currentListItems: items.map((i) => i.name),
-      };
-
-      const result = await mira.stopListening(context);
-
-      if (result.success) {
-        // Handle based on intent
-        switch (result.intent) {
-          case 'add_items':
-            if (result.items.length > 0) {
-              // Add all items with quantities
-              for (const item of result.items) {
-                await addItem(list.id, item.name, item.quantity, 'voice');
-              }
-            }
-            break;
-
-          case 'get_suggestions':
-            // Refresh suggestions
-            loadSuggestions();
-            break;
-
-          case 'check_item':
-            // For now, just show the response
-            break;
-
-          default:
-            break;
-        }
-
-        // Show Mira's response
-        setMiraStatus(result.response);
-        setTimeout(() => setMiraStatus(null), 2500);
+        setMiraStatus(result.message);
       } else {
-        setMiraStatus(getRandomResponse('notUnderstood'));
-        setTimeout(() => setMiraStatus(null), 2000);
+        setMiraStatus(result.message || "Didn't catch that");
       }
-      setIsListening(false);
+      setTimeout(() => setMiraStatus(null), 2500);
     } else {
-      // Start listening
       const started = await mira.startListening();
       if (started) {
-        setIsListening(true);
-        setMiraStatus(getRandomResponse('greeting'));
+        setIsDictating(true);
+        setMiraStatus('Listening... tap again when done');
       } else {
-        Alert.alert('Microphone Access', 'Please allow microphone access to use Mira.');
+        Alert.alert('Microphone Access', 'Please allow microphone access to dictate items.');
       }
     }
   };
@@ -300,51 +234,42 @@ export default function MainList() {
     if (!household?.invite_code) return;
     try {
       await Share.share({
-        message: `Join my household "${household.name}" on Memoryaisle!\n\nInvite code: ${household.invite_code}`,
+        message: `Join my household "${household.name}" on MemoryAisle!\n\nInvite code: ${household.invite_code}`,
       });
     } catch (error) {
-      console.error('Share error:', error);
+      logger.error('Share error:', error);
     }
   };
 
-  // Load list and items
+  // Load list
   useEffect(() => {
     async function loadList() {
       if (!household) return;
-
       setLoading(true);
       const activeList = await getActiveList(household.id);
       setList(activeList);
-
       if (activeList) {
         const listItems = await getListItems(activeList.id);
         setItems(listItems);
       }
       setLoading(false);
     }
-
     loadList();
   }, [household]);
 
-  // Subscribe to realtime updates
+  // Realtime subscription
   useEffect(() => {
     if (!list) return;
-
     const unsubscribe = subscribeToList(
       list.id,
-      // On insert - add if not already present and not completed
       (newItem) => {
         if (!newItem.is_completed) {
           setItems((current) => {
-            // Check if item already exists
-            if (current.some((item) => item.id === newItem.id)) {
-              return current;
-            }
+            if (current.some((item) => item.id === newItem.id)) return current;
             return [...current, newItem];
           });
         }
       },
-      // On update - remove if completed, update otherwise
       (updatedItem) => {
         if (updatedItem.is_completed) {
           setItems((current) => current.filter((item) => item.id !== updatedItem.id));
@@ -354,37 +279,59 @@ export default function MainList() {
           );
         }
       },
-      // On delete
       (itemId) => {
         setItems((current) => current.filter((item) => item.id !== itemId));
       }
     );
-
     return unsubscribe;
   }, [list]);
 
-  const handleAddItem = async () => {
+  const handleAddItem = async (confirmedAllergens?: string[]) => {
     if (!newItemName.trim() || !list) return;
 
-    const item = await addItem(list.id, newItemName.trim());
-    if (item) {
-      // Don't add here - realtime will handle it
-      setNewItemName('');
+    const itemName = newItemName.trim();
+
+    // Check if user has allergies and if item contains their allergen
+    const userAllergies = user?.allergies || [];
+    const allergenMatch = checkSelfAllergen(itemName, userAllergies);
+
+    // If allergens detected and not yet confirmed, show alert
+    if (allergenMatch && !confirmedAllergens) {
+      const alertInfo = formatSelfAllergyAlert(itemName, allergenMatch);
+      Alert.alert(
+        alertInfo.title,
+        alertInfo.message,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Anyway',
+            style: 'destructive',
+            onPress: () => handleAddItem(allergenMatch.map(a => a.allergen)),
+          },
+        ]
+      );
+      return;
     }
+
+    // Add item with allergy record if user confirmed despite allergy
+    const allergyRecord = confirmedAllergens && confirmedAllergens.length > 0
+      ? {
+          addedByName: user?.name || 'You',
+          allergens: confirmedAllergens,
+          confirmedAt: new Date().toISOString(),
+        }
+      : undefined;
+
+    await addItem(list.id, itemName, allergyRecord);
+    setNewItemName('');
   };
 
   const handleCompleteItem = useCallback(async (itemId: string) => {
-    // Optimistically remove from UI
     setItems((current) => current.filter((item) => item.id !== itemId));
-
-    // Update in database
     const success = await completeItem(itemId);
-    if (!success) {
-      // Reload on failure
-      if (list) {
-        const listItems = await getListItems(list.id);
-        setItems(listItems);
-      }
+    if (!success && list) {
+      const listItems = await getListItems(list.id);
+      setItems(listItems);
     }
   }, [list]);
 
@@ -395,378 +342,1555 @@ export default function MainList() {
     router.replace('/');
   };
 
-  // Receipt scanning - check for missing items
-  const handleScanReceipt = async () => {
-    if (items.length === 0) {
-      Alert.alert('Empty List', 'Your list is empty! Nothing to check.');
-      return;
-    }
-
-    setIsScanning(true);
-    setMiraStatus('Taking photo...');
-
-    try {
-      const receiptImage = await receiptService.captureReceipt();
-
-      if (!receiptImage) {
-        setIsScanning(false);
-        setMiraStatus(null);
-        return;
-      }
-
-      setMiraStatus('Scanning receipt...');
-
-      const listItemNames = items.map(i => i.name);
-      const result = await receiptService.scanAndCompare(receiptImage, listItemNames);
-
-      setIsScanning(false);
-
-      if (result.success) {
-        if (result.missingItems.length > 0) {
-          setMissingItems(result.missingItems);
-          // Mira warns about missing items
-          await mira.speak(result.message);
-          setMiraStatus(result.message);
-        } else {
-          // All good!
-          await mira.speak(result.message);
-          setMiraStatus(result.message);
-          setTimeout(() => setMiraStatus(null), 3000);
-        }
-      } else {
-        await mira.speak(result.message);
-        setMiraStatus(result.message);
-        setTimeout(() => setMiraStatus(null), 3000);
-      }
-    } catch (error) {
-      console.error('Receipt scan error:', error);
-      setIsScanning(false);
-      const errorMessage = 'Something went wrong scanning the receipt. Please try again.';
-      setMiraStatus(errorMessage);
-      Alert.alert(
-        'Scan Failed',
-        errorMessage,
-        [{ text: 'OK', onPress: () => setMiraStatus(null) }]
-      );
-    }
-  };
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.paper }]}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.paperDark }]}>
-          <View>
-            <Text style={[styles.title, { color: colors.ink }]}>MemoryAisle</Text>
-            <Text style={[styles.household, { color: colors.inkLight }]}>{household?.name}</Text>
+    <ScreenWrapper withBottomPadding={false}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>MemoryAisle</Text>
+            <Image
+              source={require('../../assets/theapp.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
-          <View style={styles.headerButtons}>
-            {/* Dark Mode Toggle */}
-            <Pressable onPress={toggleTheme} style={[styles.themeButton, { backgroundColor: colors.paperDark }]}>
-              <Text style={styles.themeIcon}>{isDark ? '☀️' : '🌙'}</Text>
-            </Pressable>
-            {household?.invite_code && (
-              <Pressable onPress={() => setShowQR(true)} style={[styles.shareButton, { backgroundColor: colors.paperDark }]}>
-                <Text style={styles.shareIcon}>👥</Text>
-              </Pressable>
-            )}
-            <Pressable onPress={handleSignOut} style={styles.signOutButton}>
-              <Text style={[styles.signOutText, { color: colors.inkLight }]}>Sign Out</Text>
+          <View style={styles.headerActions}>
+            {/* Menu Button */}
+            <Pressable onPress={() => setShowMenu(true)} style={styles.iconButton}>
+              <BlurView intensity={20} tint="light" style={styles.iconButtonBlur} />
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.7)', 'rgba(245, 245, 250, 0.5)']}
+                style={styles.iconButtonGradient}
+              />
+              <View style={styles.iconButtonBorder} />
+              <Text style={styles.menuIcon}>{'\u2630'}</Text>
             </Pressable>
           </View>
         </View>
-
-        {/* QR Code Modal */}
-        <Modal
-          visible={showQR}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowQR(false)}
+        {/* Store Location Slot */}
+        <Pressable
+          style={styles.storeSlot}
+          onPress={() => {
+            setShowMenu(false);
+            setTimeout(() => setShowSaveStore(true), 200);
+          }}
         >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowQR(false)}>
-            <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
-              <Pressable style={styles.qrCard} onPress={(e) => e.stopPropagation()}>
-                <Text style={styles.qrTitle}>Invite Family</Text>
-                <Text style={styles.qrSubtitle}>Scan to join {household?.name}</Text>
+          <BlurView intensity={15} tint="light" style={styles.storeSlotBlur} />
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.25)']}
+            style={styles.storeSlotGradient}
+          />
+          <View style={styles.storeSlotBorder} />
+          <LocationGlassIcon size={14} color={COLORS.gold.dark} />
+          <Text style={styles.storeSlotText}>
+            {arrivedStore ? arrivedStore.name : household?.name || 'Set your store'}
+          </Text>
+          <Text style={styles.storeSlotArrow}>{'\u203A'}</Text>
+        </Pressable>
+      </View>
 
-                <View style={styles.qrContainer}>
-                  {household?.invite_code && (
-                    <QRCode
-                      value={`memoryaisle://join/${household.invite_code}`}
-                      size={200}
-                      color={COLORS.ink}
-                      backgroundColor="white"
-                    />
-                  )}
-                </View>
+      {/* Stats Row */}
+      <View style={styles.statsRow}>
+        <StatCard value={totalItems} label="Items" />
+        <StatCard value={completedItems} label="Done" isGold />
+        <StatCard value={familyMembers} label="Family" />
+      </View>
 
-                <Text style={styles.qrCode}>{household?.invite_code}</Text>
+      {/* Menu Modal - Full Screen Frosted Glass */}
+      <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <View style={styles.menuModalContainer}>
+          {/* Full screen background gradient */}
+          <LinearGradient
+            colors={[
+              COLORS.background.start,
+              COLORS.background.mid1,
+              COLORS.background.mid2,
+              COLORS.background.end,
+            ]}
+            locations={[0, 0.4, 0.7, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.3, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* Ambient light effects */}
+          <View style={styles.menuAmbientLight} pointerEvents="none">
+            <LinearGradient
+              colors={['rgba(255,250,240,0.6)', 'transparent']}
+              style={styles.menuAmbientTopLeft}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <LinearGradient
+              colors={['rgba(212, 165, 71, 0.15)', 'transparent']}
+              style={styles.menuAmbientGold}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+            />
+          </View>
 
-                <Pressable style={styles.shareButtonLarge} onPress={handleShare}>
-                  <Text style={styles.shareButtonText}>Share Invite</Text>
+          {/* Header */}
+          <View style={[styles.menuHeader, { paddingTop: insets.top + SPACING.md }]}>
+            <Text style={styles.menuTitle}>Menu</Text>
+            <Pressable style={styles.menuCloseX} onPress={() => setShowMenu(false)}>
+              <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.7)', 'rgba(255, 255, 255, 0.4)']}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.menuCloseXBorder} />
+              <Text style={styles.menuCloseXText}>✕</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView
+            style={styles.menuScrollView}
+            contentContainerStyle={[styles.menuScrollContent, { paddingBottom: insets.bottom + 40 }]}
+            showsVerticalScrollIndicator={false}
+          >
+
+                {/* Main Navigation */}
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => setShowMenu(false)}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <ListGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Shopping List</Text>
+                      <Text style={styles.menuItemSubtext}>Your current list</Text>
+                    </View>
+                  </View>
                 </Pressable>
 
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/mealplan');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <PlanGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Meal Plan</Text>
+                      <Text style={styles.menuItemSubtext}>Plan your week</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/favorites');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <FavoritesGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Favorites</Text>
+                      <Text style={styles.menuItemSubtext}>Your go-to items</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/recipes');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <RecipeGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Recipes</Text>
+                      <Text style={styles.menuItemSubtext}>Family favorites</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <View style={styles.menuDivider} />
+
+                {/* Profile Section */}
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/profile');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <ProfileGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>My Profile</Text>
+                      <Text style={styles.menuItemSubtext}>Your preferences & allergies</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/family');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <FamilyHomeGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Our Family</Text>
+                      <Text style={styles.menuItemSubtext}>Shared moments & traditions</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/calendar');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <CalendarGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Smart Calendar</Text>
+                      <Text style={styles.menuItemSubtext}>Holidays & traditions</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push('/trips');
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <TripGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Trip Planner</Text>
+                      <Text style={styles.menuItemSubtext}>Camping, road trips & more</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <View style={styles.menuDivider} />
+
+                {/* Household Management */}
+                {household?.invite_code && (
+                  <Pressable
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowMenu(false);
+                      setTimeout(() => setShowQR(true), 200);
+                    }}
+                  >
+                    <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                    <LinearGradient
+                      colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                      style={styles.menuItemGradient}
+                    />
+                    <View style={styles.menuItemBorder} />
+                    <View style={styles.menuItemInner}>
+                      <GlassIconWrapper size={40} variant="gold">
+                        <FamilyGlassIcon size={22} />
+                      </GlassIconWrapper>
+                      <View style={styles.menuItemContent}>
+                        <Text style={styles.menuItemText}>Invite Family</Text>
+                        <Text style={styles.menuItemSubtext}>Share your household</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    setTimeout(() => setShowSaveStore(true), 200);
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      <LocationGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>Save Store Location</Text>
+                      <Text style={styles.menuItemSubtext}>Auto-surface your list</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                {/* Theme Toggle */}
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    toggleTheme();
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="gold">
+                      {isDark ? <SunIcon size={22} /> : <MoonIcon size={22} />}
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemText}>{isDark ? 'Light Mode' : 'Dark Mode'}</Text>
+                      <Text style={styles.menuItemSubtext}>Switch appearance</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+                <View style={styles.menuDivider} />
+
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    // Delay the alert so the menu modal finishes closing first
+                    setTimeout(() => {
+                      Alert.alert(
+                        'Sign Out',
+                        'Are you sure you want to sign out?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Sign Out', style: 'destructive', onPress: handleSignOut },
+                        ]
+                      );
+                    }, 200);
+                  }}
+                >
+                  <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                    style={styles.menuItemGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 0.6 }}
+                    style={styles.menuItemShine}
+                  />
+                  <View style={styles.menuItemBorder} />
+                  <View style={styles.menuItemInner}>
+                    <GlassIconWrapper size={40} variant="subtle">
+                      <LogoutGlassIcon size={22} />
+                    </GlassIconWrapper>
+                    <View style={styles.menuItemContent}>
+                      <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Sign Out</Text>
+                      <Text style={styles.menuItemSubtext}>See you soon!</Text>
+                    </View>
+                  </View>
+                </Pressable>
+
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* QR Modal - Ultra Modern Frosted Glass */}
+      <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowQR(false)}>
+          <BlurView intensity={100} tint="dark" style={styles.modalBlur}>
+            <Pressable style={styles.qrCard} onPress={(e) => e.stopPropagation()}>
+              {/* Ultra Transparent Frosted Glass */}
+              <BlurView intensity={70} tint="light" style={styles.qrCardBlur} />
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.3)', 'rgba(248, 250, 255, 0.2)']}
+                style={styles.qrCardGradient}
+              />
+              {/* Top shine reflection */}
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.4)', 'rgba(255, 255, 255, 0.05)', 'transparent']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 0.5 }}
+                style={styles.qrCardShine}
+              />
+              {/* Glass border */}
+              <View style={styles.qrCardBorder} />
+
+              {/* Content */}
+              <View style={styles.qrCardContent}>
+                {/* Header Badge */}
+                <View style={styles.qrBadge}>
+                  <LinearGradient
+                    colors={[COLORS.gold.light, COLORS.gold.base]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.qrBadgeGradient}
+                  />
+                  <Text style={styles.qrBadgeText}>FAMILY INVITE</Text>
+                </View>
+
+                <Text style={styles.qrTitle}>{household?.name}</Text>
+                <Text style={styles.qrSubtitle}>Scan to join your household</Text>
+
+                {/* QR Code Container with Inner Glow */}
+                <View style={styles.qrWrapper}>
+                  <View style={styles.qrInnerGlow} />
+                  <View style={styles.qrContainer}>
+                    <LinearGradient
+                      colors={['rgba(255, 255, 255, 0.95)', 'rgba(252, 252, 255, 1)']}
+                      style={styles.qrContainerBg}
+                    />
+                    {household?.invite_code && (
+                      <QRCode
+                        value={`memoryaisle://join/${household.invite_code}`}
+                        size={180}
+                        color={COLORS.text.primary}
+                        backgroundColor="transparent"
+                      />
+                    )}
+                  </View>
+                </View>
+
+                {/* Invite Code */}
+                <View style={styles.qrCodeContainer}>
+                  <Text style={styles.qrCodeLabel}>INVITE CODE</Text>
+                  <Text style={styles.qrCode}>{household?.invite_code}</Text>
+                </View>
+
+                {/* Share Button */}
+                <Pressable style={styles.shareButton} onPress={handleShare}>
+                  <LinearGradient
+                    colors={[COLORS.gold.light, COLORS.gold.base, COLORS.gold.dark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.shareButtonGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 240, 200, 0.6)', 'rgba(255, 220, 150, 0)']}
+                    start={{ x: 0.2, y: 0 }}
+                    end={{ x: 0.8, y: 0.7 }}
+                    style={styles.shareButtonShine}
+                  />
+                  <View style={styles.shareButtonBorder} />
+                  <Text style={styles.shareButtonText}>Share Invite Link</Text>
+                </Pressable>
+
+                {/* Close Button */}
                 <Pressable style={styles.closeButton} onPress={() => setShowQR(false)}>
                   <Text style={styles.closeButtonText}>Done</Text>
                 </Pressable>
-              </Pressable>
-            </BlurView>
-          </Pressable>
-        </Modal>
+              </View>
+            </Pressable>
+          </BlurView>
+        </Pressable>
+      </Modal>
 
-        {/* Save Store Modal */}
-        <Modal
-          visible={showSaveStore}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowSaveStore(false)}
-        >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowSaveStore(false)}>
-            <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
-              <Pressable style={styles.qrCard} onPress={(e) => e.stopPropagation()}>
-                <Text style={styles.qrTitle}>Save Store</Text>
-                <Text style={styles.qrSubtitle}>Your list will auto-surface when you arrive here</Text>
-
-                <TextInput
-                  style={styles.storeInput}
-                  placeholder="Store name (e.g., Ralph's)"
-                  placeholderTextColor={COLORS.inkLight}
-                  value={storeNameInput}
-                  onChangeText={setStoreNameInput}
-                  autoFocus
+      {/* Save Store Modal */}
+      <Modal visible={showSaveStore} transparent animationType="fade" onRequestClose={() => setShowSaveStore(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSaveStore(false)}>
+          <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
+            <Pressable style={styles.qrCard} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.qrTitle}>Save Store</Text>
+              <Text style={styles.qrSubtitle}>Your list will auto-surface when you arrive here</Text>
+              <TextInput
+                style={styles.storeInput}
+                placeholder="Store name (e.g., Ralph's)"
+                placeholderTextColor={COLORS.text.secondary}
+                value={storeNameInput}
+                onChangeText={setStoreNameInput}
+                autoFocus
+              />
+              <Pressable
+                style={[styles.shareButton, !storeNameInput.trim() && styles.buttonDisabled]}
+                onPress={async () => {
+                  if (!storeNameInput.trim()) return;
+                  const store = await geofenceService.saveCurrentLocationAsStore(storeNameInput.trim());
+                  if (store) {
+                    setShowSaveStore(false);
+                    setStoreNameInput('');
+                    Alert.alert('Saved!', `${store.name} saved. Your list will pop up when you arrive.`);
+                  } else {
+                    Alert.alert('Error', 'Could not save location. Check location permissions.');
+                  }
+                }}
+              >
+                <LinearGradient
+                  colors={[COLORS.gold.light, COLORS.gold.base]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.shareButtonGradient}
                 />
-
-                <Pressable
-                  style={[styles.shareButtonLarge, !storeNameInput.trim() && styles.buttonDisabled]}
-                  onPress={async () => {
-                    if (!storeNameInput.trim()) return;
-                    const store = await geofenceService.saveCurrentLocationAsStore(storeNameInput.trim());
-                    if (store) {
-                      setShowSaveStore(false);
-                      setStoreNameInput('');
-                      Alert.alert('Saved!', `${store.name} saved. Your list will pop up when you arrive.`);
-                    } else {
-                      Alert.alert('Error', 'Could not save location. Check location permissions.');
-                    }
-                  }}
-                >
-                  <Text style={styles.shareButtonText}>Save Location</Text>
-                </Pressable>
-
-                <Pressable style={styles.closeButton} onPress={() => setShowSaveStore(false)}>
-                  <Text style={styles.closeButtonText}>Cancel</Text>
-                </Pressable>
+                <LinearGradient
+                  colors={['rgba(255, 240, 200, 0.5)', 'rgba(255, 220, 150, 0)']}
+                  start={{ x: 0.2, y: 0 }}
+                  end={{ x: 0.8, y: 0.6 }}
+                  style={styles.shareButtonShine}
+                />
+                <View style={styles.shareButtonBorder} />
+                <Text style={styles.shareButtonText}>Save Location</Text>
               </Pressable>
-            </BlurView>
-          </Pressable>
-        </Modal>
+              <Pressable style={styles.closeButton} onPress={() => setShowSaveStore(false)}>
+                <Text style={styles.closeButtonText}>Cancel</Text>
+              </Pressable>
+            </Pressable>
+          </BlurView>
+        </Pressable>
+      </Modal>
 
-        {/* Store Arrival Banner */}
-        {arrivedStore && (
-          <StoreArrivalBanner
-            store={arrivedStore}
-            onDismiss={() => setArrivedStore(null)}
-            colors={colors}
-          />
-        )}
+      {/* Store Arrival Banner */}
+      {arrivedStore && (
+        <StoreArrivalBanner
+          store={arrivedStore}
+          onDismiss={() => setArrivedStore(null)}
+          colors={colors}
+        />
+      )}
 
-        {/* Mira Suggestions */}
-        {!loading && (suggestions.length > 0 || suggestionsLoading) && (
-          <MiraSuggestions
-            suggestions={suggestions}
-            onAddItem={handleAddSuggestion}
-            onDismiss={handleDismissSuggestion}
-            onRefresh={loadSuggestions}
-            isLoading={suggestionsLoading}
-            colors={colors}
-          />
-        )}
-
-        {/* Mira Chat Bubbles */}
-        {(conversation.length > 0 || isListening || isThinking || isSpeaking) && (
-          <MiraChat
-            conversation={conversation}
-            isListening={isListening}
-            isThinking={isThinking}
-            isSpeaking={isSpeaking}
-            colors={colors}
-          />
-        )}
-
-        {/* List */}
-        <View style={styles.listContainer}>
-          {loading ? (
-            <Text style={[styles.loadingText, { color: colors.inkLight }]}>Loading...</Text>
-          ) : (
-            <GroceryList items={items} onItemComplete={handleCompleteItem} colors={colors} />
-          )}
-        </View>
-
-        {/* Add Item Input Bar - Frosted Glass */}
-        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={styles.inputBar}>
-          {/* Camera Button - with store save option */}
-          <Pressable
-            style={styles.cameraButton}
-            onPress={() => {
-              Alert.alert(
-                'Quick Actions',
-                'What would you like to do?',
-                [
-                  {
-                    text: 'Save This Store',
-                    onPress: () => setShowSaveStore(true),
-                  },
-                  {
-                    text: 'Scan Receipt',
-                    onPress: handleScanReceipt,
-                  },
-                  { text: 'Cancel', style: 'cancel' },
-                ]
+      {/* List */}
+      <View style={styles.listContainer}>
+        {loading ? (
+          <Text style={styles.loadingText}>Loading...</Text>
+        ) : items.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>All done!</Text>
+            <Text style={styles.emptySubtitle}>Your list is empty</Text>
+          </View>
+        ) : (
+          <SectionList
+            sections={sections}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            stickySectionHeadersEnabled={false}
+            renderSectionHeader={({ section }) => {
+              const CategoryIcon = CategoryIcons[section.categoryId as GroceryCategory] || CategoryIcons['other'];
+              const isCollapsed = collapsedCategories.has(section.categoryId);
+              if (!CategoryIcon) {
+                // Fallback if no icon found
+                return (
+                  <View style={{ padding: SPACING.md }}>
+                    <Text style={{ color: COLORS.text.secondary }}>{section.categoryInfo?.label || section.categoryId}</Text>
+                  </View>
+                );
+              }
+              return (
+                <CategoryHeader
+                  category={section.categoryInfo}
+                  count={section.data.length}
+                  IconComponent={CategoryIcon}
+                  isCollapsed={isCollapsed}
+                  onToggle={() => toggleCategory(section.categoryId)}
+                />
               );
             }}
-          >
-            <Text style={styles.cameraIcon}>📷</Text>
-          </Pressable>
-
-          {/* Text Input */}
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <TextInput
-              style={[styles.input, { color: isDark ? '#FFF' : colors.ink }]}
-              placeholder="Add an item..."
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)'}
-              value={newItemName}
-              onChangeText={setNewItemName}
-              onSubmitEditing={handleAddItem}
-              returnKeyType="done"
-            />
-            {/* Mic Button - Voice to Text */}
-            <Pressable
-              style={styles.micButton}
-              onPress={() => {
-                Alert.alert(
-                  'Voice to Text',
-                  'Dictate items directly - coming soon!',
-                  [{ text: 'OK' }]
-                );
-              }}
-            >
-              <Text style={styles.micIcon}>🎤</Text>
-            </Pressable>
-          </View>
-
-          {/* Mira AI Button - Large circular */}
-          <Pressable
-            style={[
-              styles.aiButton,
-              isListening && styles.aiButtonListening,
-            ]}
-            onPress={handleMira}
-          >
-            <Text style={styles.aiIcon}>{isListening ? '🎙️' : '✨'}</Text>
-          </Pressable>
-        </BlurView>
-
-        {/* Mira Status */}
-        {miraStatus && (
-          <View style={[styles.miraStatus, { backgroundColor: colors.paperDark }]}>
-            <Text style={[styles.miraStatusText, { color: colors.ink }]}>
-              {isListening ? '🎙️ ' : '✨ '}Mira: {miraStatus}
-            </Text>
-          </View>
-        )}
-
-        {/* Wake Word Indicator */}
-        {!miraStatus && !isListening && (
-          <View style={styles.wakeWordIndicator}>
-            <Text style={[styles.wakeWordText, { color: colors.inkFaded }]}>
-              Say "{wakeWord.getWakeWordName()}" to add items
-            </Text>
-          </View>
-        )}
-
-        {/* Missing Items Alert */}
-        {missingItems.length > 0 && (
-          <MissingItemsAlert
-            items={missingItems}
-            onDismiss={() => setMissingItems([])}
-            colors={colors}
+            renderItem={({ item, section }) => {
+              // Don't render items if category is collapsed
+              if (collapsedCategories.has(section.categoryId)) {
+                return null;
+              }
+              return (
+                <ListItemCard
+                  item={item}
+                  onComplete={handleCompleteItem}
+                  categoryColor={section.categoryInfo.color}
+                />
+              );
+            }}
+            ListFooterComponent={<View style={{ height: 200 }} />}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
+            windowSize={5}
           />
         )}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </View>
+
+      {/* Input Bar - Bottom Navigation */}
+      <View style={[styles.inputArea, { bottom: insets.bottom + 12 }]}>
+        <View style={styles.inputBar}>
+          <BlurView intensity={30} tint="light" style={styles.inputBarBlur} />
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.3)', 'rgba(248, 250, 255, 0.22)']}
+            style={styles.inputBarGradient}
+          />
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.08)', 'transparent']}
+            style={styles.inputBarShine}
+          />
+          <View style={styles.inputBarBorder} />
+
+          <View style={styles.inputBarContent}>
+            {/* Mic Button */}
+            <Pressable
+              style={[styles.scanButton, isDictating && styles.micButtonActive, isProcessingDictation && { opacity: 0.6 }]}
+              disabled={isProcessingDictation}
+              onPress={async () => {
+                if (!list) {
+                  Alert.alert('Loading...', 'Please wait for your list to load.');
+                  return;
+                }
+                if (isProcessingDictation) return; // Prevent double-tap
+
+                if (isDictating) {
+                  // Stop dictating and process
+                  setIsProcessingDictation(true);
+                  setIsDictating(false);
+                  setMiraStatus('Processing...');
+                  try {
+                    const result = await mira.quickDictate();
+                    if (result.success && result.items.length > 0) {
+                      for (const item of result.items) {
+                        await addItem(list.id, item.name, undefined, item.quantity, 'voice');
+                      }
+                      setMiraStatus(result.message);
+                      // Refresh items
+                      const refreshed = await getListItems(list.id);
+                      setItems(refreshed);
+                    } else {
+                      setMiraStatus(result.message || "Didn't catch that");
+                    }
+                  } catch (error) {
+                    logger.error('Dictation error:', error);
+                    setMiraStatus('Something went wrong. Try again.');
+                  } finally {
+                    setIsProcessingDictation(false);
+                    setTimeout(() => setMiraStatus(null), 2500);
+                  }
+                } else {
+                  // Start dictating
+                  setIsProcessingDictation(true);
+                  try {
+                    const started = await mira.startListening();
+                    if (started) {
+                      setIsDictating(true);
+                      setMiraStatus('Listening... tap again when done');
+                    } else {
+                      Alert.alert('Microphone Access', 'Please allow microphone access to dictate items.');
+                    }
+                  } catch (error) {
+                    logger.error('Failed to start dictation:', error);
+                    Alert.alert('Error', 'Could not start recording. Please try again.');
+                  } finally {
+                    setIsProcessingDictation(false);
+                  }
+                }
+              }}
+            >
+              <BlurView intensity={20} tint="light" style={styles.scanButtonBlur} />
+              <LinearGradient
+                colors={isDictating
+                  ? ['rgba(212, 175, 55, 0.4)', 'rgba(212, 165, 71, 0.25)']
+                  : ['rgba(255, 255, 255, 0.6)', 'rgba(245, 245, 250, 0.4)']}
+                style={styles.scanButtonGradient}
+              />
+              <View style={[styles.scanButtonBorder, isDictating && styles.micButtonBorderActive]} />
+              <VoiceIcon size={24} color={isDictating ? COLORS.white : COLORS.gold.base} />
+            </Pressable>
+
+            {/* Text Input */}
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Add an item..."
+                placeholderTextColor={COLORS.platinum.mid}
+                value={newItemName}
+                onChangeText={setNewItemName}
+                onSubmitEditing={() => handleAddItem()}
+                returnKeyType="done"
+              />
+              {/* Send Button (replaces mic) */}
+              <Pressable
+                style={[styles.micButton, newItemName.trim() && styles.sendButtonActive]}
+                onPress={() => handleAddItem()}
+                disabled={!newItemName.trim()}
+              >
+                {newItemName.trim() ? (
+                  <LinearGradient
+                    colors={[COLORS.gold.light, COLORS.gold.base]}
+                    style={styles.micButtonGradient}
+                  />
+                ) : (
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.5)', 'rgba(240, 240, 245, 0.3)']}
+                    style={styles.micButtonGradient}
+                  />
+                )}
+                <Text style={[styles.sendButtonIcon, newItemName.trim() && styles.sendButtonIconActive]}>{'\u2191'}</Text>
+              </Pressable>
+            </View>
+
+          </View>
+        </View>
+      </View>
+
+      {/* Dictation Status */}
+      {miraStatus && (
+        <View style={[styles.miraStatus, { bottom: insets.bottom + 92 }]}>
+          <BlurView intensity={25} tint="light" style={styles.miraStatusBlur} />
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.8)', 'rgba(250, 250, 255, 0.7)']}
+            style={styles.miraStatusGradient}
+          />
+          <View style={styles.miraStatusBorder} />
+          <View style={styles.miraStatusContent}>
+            <Text style={styles.miraStatusText}>{miraStatus}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Missing Items Alert */}
+      {missingItems.length > 0 && (
+        <MissingItemsAlert
+          items={missingItems}
+          onDismiss={() => setMissingItems([])}
+          colors={colors}
+        />
+      )}
+    </ScreenWrapper>
   );
 }
 
+// ==================== COMPONENTS ====================
+
+interface CategoryHeaderProps {
+  category: { id: string; label: string; color: string };
+  count: number;
+  IconComponent: React.FC<{ size?: number; color?: string }>;
+  isCollapsed: boolean;
+  onToggle: () => void;
+}
+
+const CategoryHeader = memo(function CategoryHeader({ category, count, IconComponent, isCollapsed, onToggle }: CategoryHeaderProps) {
+  // Animated rotation for chevron
+  const rotateAnim = useRef(new Animated.Value(isCollapsed ? 0 : 1)).current;
+
+  useEffect(() => {
+    Animated.spring(rotateAnim, {
+      toValue: isCollapsed ? 0 : 1,
+      useNativeDriver: true,
+      tension: 120,
+      friction: 14,
+    }).start();
+  }, [isCollapsed, rotateAnim]);
+
+  const chevronRotation = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-90deg', '0deg'],
+  });
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => [
+        styles.categoryHeader,
+        pressed && styles.categoryHeaderPressed,
+      ]}
+    >
+      <BlurView intensity={25} tint="light" style={styles.categoryHeaderBlur} />
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.28)', 'rgba(250, 252, 255, 0.18)', 'rgba(248, 250, 255, 0.12)']}
+        style={styles.categoryHeaderGradient}
+      />
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.06)', 'transparent']}
+        style={styles.categoryHeaderShine}
+      />
+      <View style={styles.categoryHeaderBorder} />
+
+      <View style={styles.categoryHeaderContent}>
+        <View style={[styles.categoryIconWrapper, { backgroundColor: `${category.color}18` }]}>
+          <IconComponent size={20} color={category.color} />
+        </View>
+        <Text style={styles.categoryTitle}>{category.label}</Text>
+        <View style={styles.categoryCountBadge}>
+          <Text style={styles.categoryCountText}>{count}</Text>
+        </View>
+        {/* Animated Chevron */}
+        <Animated.View style={[styles.categoryChevron, { transform: [{ rotate: chevronRotation }] }]}>
+          <Text style={styles.categoryChevronText}>{'\u25BC'}</Text>
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+});
+
+function StatCard({ value, label, isGold = false }: { value: number; label: string; isGold?: boolean }) {
+  return (
+    <View style={styles.statCard}>
+      <BlurView intensity={40} tint="light" style={styles.statCardBlur} />
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.35)', 'rgba(250, 252, 255, 0.25)', 'rgba(248, 250, 255, 0.18)']}
+        style={styles.statCardGradient}
+      />
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.08)', 'transparent']}
+        style={styles.statCardShine}
+      />
+      <View style={styles.statCardBorder} />
+      <View style={styles.statCardContent}>
+        <Text style={[styles.statValue, isGold && styles.statValueGold]}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+      </View>
+    </View>
+  );
+}
+
+const ListItemCard = memo(function ListItemCard({ item, onComplete, categoryColor }: { item: ListItem; onComplete: (id: string) => void; categoryColor?: string }) {
+  const hasAllergyRecord = item.allergy_record && item.allergy_record.allergens.length > 0;
+
+  // Convert hex color to rgba for gradient
+  const hexToRgba = (hexColor: string, alpha: number) => {
+    const hex = hexColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // Category color on left half, fading into gold background
+  const bgColors = hasAllergyRecord
+    ? ['rgba(239, 83, 80, 0.5)', 'rgba(239, 83, 80, 0.2)', 'rgba(212, 165, 71, 0.15)']
+    : categoryColor
+      ? [hexToRgba(categoryColor, 0.55), hexToRgba(categoryColor, 0.2), 'rgba(212, 165, 71, 0.12)']
+      : ['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.3)', 'rgba(212, 165, 71, 0.1)'];
+
+  return (
+    <Pressable onPress={() => onComplete(item.id)} style={styles.listItem}>
+      <BlurView intensity={30} tint="light" style={styles.listItemBlur} />
+      <LinearGradient
+        colors={bgColors as any}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        locations={[0, 0.4, 1]}
+        style={styles.listItemGradient}
+      />
+      {/* Reflective shine at top */}
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.45)', 'rgba(255, 255, 255, 0.1)', 'transparent']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.5 }}
+        style={styles.listItemShine}
+      />
+      <View style={[
+        styles.listItemBorder,
+        hasAllergyRecord && styles.listItemBorderAllergy,
+        categoryColor && !hasAllergyRecord && { borderColor: hexToRgba(categoryColor, 0.25) }
+      ]} />
+
+      <View style={styles.listItemContent}>
+        <View style={styles.checkbox}>
+          <View style={styles.checkboxInner} />
+        </View>
+        <View style={styles.itemInfo}>
+          <View style={styles.itemNameRow}>
+            <Text style={styles.itemName}>{item.name}</Text>
+            {hasAllergyRecord && (
+              <View style={styles.allergyBadge}>
+                <AllergyBadgeIcon size={14} />
+              </View>
+            )}
+          </View>
+          <View style={styles.itemMeta}>
+            {item.added_by_name && (
+              <View style={[
+                styles.addedByBadge,
+                hasAllergyRecord && styles.addedByBadgeAllergy
+              ]}>
+                <Text style={[
+                  styles.addedByText,
+                  hasAllergyRecord && styles.addedByTextAllergy
+                ]}>
+                  {item.added_by_name}
+                  {hasAllergyRecord && ` • ${item.allergy_record!.allergens.map(a => ALLERGENS[a].shortLabel).join(', ')}`}
+                </Text>
+              </View>
+            )}
+            {item.source === 'ai_suggested' && (
+              <Text style={styles.itemCategory}>Suggested</Text>
+            )}
+          </View>
+        </View>
+        {item.quantity > 1 && (
+          <View style={styles.qtyBadge}>
+            <Text style={styles.qtyText}>{item.quantity}</Text>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+});
+
+// ==================== STYLES ====================
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.paper,
-  },
-  keyboardView: {
-    flex: 1,
-  },
   header: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.paperDark,
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  logoImage: {
+    width: 28,
+    height: 28,
   },
   title: {
-    fontFamily: FONTS.serif.regular,
-    fontSize: FONT_SIZES.xxl,
-    color: COLORS.ink,
-    letterSpacing: -1,
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '500',
+    color: COLORS.text.primary,
+    letterSpacing: -0.3,
   },
-  household: {
-    fontFamily: FONTS.serif.regular,
+  headerActions: {
+    flexDirection: 'row',
+    gap: SPACING.xs + 2,
+  },
+  // Store Location Slot
+  storeSlot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+  },
+  storeSlotBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  storeSlotGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  storeSlotBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: 'rgba(212, 165, 71, 0.2)',
+  },
+  storeSlotText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '500',
+    color: COLORS.gold.dark,
+  },
+  storeSlotArrow: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.inkLight,
-    fontStyle: 'italic',
-    marginTop: 2,
+    color: COLORS.gold.base,
+    marginLeft: 2,
   },
-  headerButtons: {
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  iconButtonBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  iconButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  iconButtonBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  iconButtonActive: {
+    shadowColor: COLORS.gold.base,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  iconButtonBorderActive: {
+    borderColor: COLORS.gold.base,
+    borderWidth: 1,
+  },
+  menuIcon: {
+    fontSize: 18,
+    color: COLORS.text.primary,
+  },
+
+  // Stats - Compact
+  statsRow: {
+    flexDirection: 'row',
+    gap: SPACING.xs + 2,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    ...SHADOWS.glass,
+  },
+  statCardBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  statCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  statCardShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+  },
+  statCardBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  statCardContent: {
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.sm,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  statValueGold: {
+    color: COLORS.gold.base,
+  },
+  statLabel: {
+    fontSize: 9,
+    color: COLORS.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 1,
+  },
+
+  // Category Section
+  categorySection: {
+    marginBottom: SPACING.md,
+  },
+  categoryHeader: {
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.sm,
+    overflow: 'hidden',
+  },
+  categoryHeaderPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+  categoryHeaderBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  categoryHeaderGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  categoryHeaderShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+  },
+  categoryHeaderBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  categoryHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  categoryIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryTitle: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm + 1,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    letterSpacing: 0.3,
+  },
+  categoryCountBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  categoryCountText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
+  },
+  categoryChevron: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  categoryChevronText: {
+    fontSize: 10,
+    color: COLORS.text.secondary,
+  },
+
+  // List
+  listContainer: {
+    flex: 1,
+    paddingHorizontal: SPACING.lg,
+  },
+  listContent: {
+    paddingBottom: 20,
+  },
+  sectionLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+    color: COLORS.gold.base,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: SPACING.md,
+    paddingLeft: 4,
+  },
+  loadingText: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    marginTop: SPACING.xxl,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 100,
+  },
+  emptyTitle: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.hero,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.sm,
+  },
+  emptySubtitle: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+    fontStyle: 'italic',
+  },
+
+  // List Item - Compact
+  listItem: {
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.xs + 2,
+    overflow: 'hidden',
+    ...SHADOWS.glass,
+  },
+  listItemBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  listItemGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  listItemShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+  },
+  listItemBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  listItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm + 2,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: 'rgba(200, 205, 215, 0.5)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxInner: {
+    width: 0,
+    height: 0,
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  itemMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    marginTop: 3,
   },
-  shareButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.paperDark,
-    alignItems: 'center',
-    justifyContent: 'center',
+  addedByBadge: {
+    backgroundColor: 'rgba(212, 165, 71, 0.1)',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: 'rgba(212, 165, 71, 0.15)',
   },
-  shareIcon: {
-    fontSize: 18,
+  addedByText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    color: COLORS.gold.dark,
   },
-  themeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  itemCategory: {
+    fontSize: FONT_SIZES.xs + 1,
+    color: COLORS.text.secondary,
   },
-  themeIcon: {
-    fontSize: 18,
+  qtyBadge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: 14,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
-  signOutButton: {
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-  },
-  signOutText: {
-    fontFamily: FONTS.sans.medium,
+  qtyText: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.inkLight,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
   },
-  // QR Modal Styles
+
+
+  // Allergy styles
+  listItemBorderAllergy: {
+    borderWidth: 1,
+    borderColor: 'rgba(239, 83, 80, 0.3)',
+  },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  allergyBadge: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addedByBadgeAllergy: {
+    backgroundColor: 'rgba(239, 83, 80, 0.1)',
+    borderColor: 'rgba(239, 83, 80, 0.2)',
+  },
+  addedByTextAllergy: {
+    color: '#C62828',
+  },
+
+  // Input Bar
+  inputArea: {
+    position: 'absolute',
+    left: SPACING.lg,
+    right: SPACING.lg,
+  },
+  inputBar: {
+    borderRadius: BORDER_RADIUS.xxl,
+    overflow: 'hidden',
+    // Subtle gold glow
+    shadowColor: COLORS.gold.base,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  inputBarBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  inputBarGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  inputBarShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  inputBarBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.xxl,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 165, 71, 0.25)', // Subtle gold border
+  },
+  inputBarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.sm + 2,
+    paddingLeft: SPACING.sm + 2,
+    gap: SPACING.sm + 2,
+  },
+  scanButton: {
+    width: 52,
+    height: 52,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  scanButtonBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scanButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scanButtonBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  micButtonActive: {
+    shadowColor: COLORS.gold.base,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  micButtonBorderActive: {
+    borderColor: COLORS.gold.base,
+    borderWidth: 1,
+  },
+  inputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 26,
+    paddingLeft: SPACING.md,
+    paddingRight: 4,
+    height: 52,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.text.primary,
+    fontStyle: 'italic',
+  },
+  micButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  micButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sendButtonActive: {
+    ...SHADOWS.goldGlow,
+  },
+  sendButtonIcon: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
+  },
+  sendButtonIconActive: {
+    color: COLORS.white,
+  },
+
+  // Dictation Status
+  miraStatus: {
+    position: 'absolute',
+    left: SPACING.lg,
+    right: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    ...SHADOWS.glass,
+  },
+  miraStatusBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  miraStatusGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  miraStatusBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  miraStatusContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  miraStatusText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+    color: COLORS.text.primary,
+    flex: 1,
+  },
+
+  // Modals
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -778,190 +1902,283 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  qrCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: SPACING.xl,
+  menuModalContainer: {
+    flex: 1,
+  },
+  menuAmbientLight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuAmbientTopLeft: {
+    position: 'absolute',
+    top: '-20%',
+    left: '-20%',
+    width: '70%',
+    height: '60%',
+    borderRadius: 1000,
+  },
+  menuAmbientGold: {
+    position: 'absolute',
+    top: '10%',
+    right: '-10%',
+    width: '60%',
+    height: '40%',
+    borderRadius: 1000,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
+  },
+  menuCloseX: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  menuCloseXBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  menuCloseXText: {
+    fontSize: 18,
+    color: COLORS.text.secondary,
+    fontWeight: '300',
+  },
+  menuScrollView: {
+    flex: 1,
+  },
+  menuScrollContent: {
+    paddingHorizontal: SPACING.lg,
+  },
+  menuTitle: {
+    fontFamily: 'Georgia',
+    fontSize: 28,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  menuItem: {
+    borderRadius: BORDER_RADIUS.xl,
+    marginBottom: SPACING.sm + 4,
+    overflow: 'hidden',
+    ...SHADOWS.glass,
+  },
+  menuItemBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuItemGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuItemBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.xl,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    shadowColor: COLORS.gold.base,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  menuItemInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md + 2,
+    paddingHorizontal: SPACING.md + 4,
+    gap: SPACING.md,
+  },
+  menuItemContent: {
+    flex: 1,
+  },
+  menuItemText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  menuItemTextDanger: {
+    color: COLORS.error,
+  },
+  menuItemSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text.secondary,
+    marginTop: 2,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: 'rgba(200, 205, 215, 0.3)',
+    marginVertical: SPACING.md,
+    marginHorizontal: SPACING.md,
+  },
+  menuItemShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+  },
+  qrCard: {
+    borderRadius: 32,
     marginHorizontal: SPACING.lg,
+    overflow: 'hidden',
+    width: '90%',
+    maxWidth: 360,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.15,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  qrCardBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  qrCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  qrCardShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '45%',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  qrCardBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  qrCardContent: {
+    padding: SPACING.xl + 4,
+    alignItems: 'center',
+  },
+  qrBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+  },
+  qrBadgeGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  qrBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 2,
   },
   qrTitle: {
-    fontFamily: FONTS.serif.regular,
-    fontSize: FONT_SIZES.xl,
-    color: COLORS.ink,
-    marginBottom: SPACING.xs,
+    fontFamily: 'Georgia',
+    fontSize: 24,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    marginBottom: 4,
+    textAlign: 'center',
   },
   qrSubtitle: {
-    fontFamily: FONTS.sans.regular,
     fontSize: FONT_SIZES.sm,
-    color: COLORS.inkLight,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.xl,
+    textAlign: 'center',
+  },
+  qrWrapper: {
+    padding: 4,
+    borderRadius: 24,
+    backgroundColor: 'rgba(212, 165, 71, 0.1)',
     marginBottom: SPACING.lg,
   },
+  qrInnerGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(212, 165, 71, 0.2)',
+  },
   qrContainer: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.paperDark,
+    padding: SPACING.lg,
+    borderRadius: 20,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrContainerBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+  },
+  qrCodeContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  qrCodeLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.text.secondary,
+    letterSpacing: 2,
+    marginBottom: 6,
   },
   qrCode: {
-    fontFamily: FONTS.sans.medium,
-    fontSize: FONT_SIZES.lg,
-    color: COLORS.inkLight,
-    letterSpacing: 4,
-    marginTop: SPACING.md,
+    fontSize: 22,
+    fontWeight: '600',
+    color: COLORS.gold.dark,
+    letterSpacing: 6,
     textTransform: 'uppercase',
   },
-  shareButtonLarge: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xxl,
-    borderRadius: 12,
-    marginTop: SPACING.lg,
+  shareButton: {
     width: '100%',
+    paddingVertical: SPACING.md + 6,
+    borderRadius: BORDER_RADIUS.lg,
+    marginTop: SPACING.lg,
+    alignItems: 'center',
+    overflow: 'hidden',
+    ...SHADOWS.goldGlow,
+  },
+  shareButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  shareButtonShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+    borderTopLeftRadius: BORDER_RADIUS.lg,
+    borderTopRightRadius: BORDER_RADIUS.lg,
+  },
+  shareButtonBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 220, 180, 0.5)',
   },
   shareButtonText: {
-    fontFamily: FONTS.sans.medium,
     fontSize: FONT_SIZES.md,
+    fontWeight: '600',
     color: COLORS.white,
-    textAlign: 'center',
+    letterSpacing: 0.5,
   },
   closeButton: {
     marginTop: SPACING.md,
     paddingVertical: SPACING.sm,
   },
   closeButtonText: {
-    fontFamily: FONTS.sans.medium,
     fontSize: FONT_SIZES.md,
-    color: COLORS.inkLight,
-  },
-  listContainer: {
-    flex: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-  },
-  loadingText: {
-    fontFamily: FONTS.serif.regular,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.inkLight,
-    textAlign: 'center',
-    marginTop: SPACING.xxl,
-  },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderTopWidth: 0.5,
-    borderTopColor: 'rgba(255,255,255,0.3)',
-  },
-  cameraButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.xs,
-  },
-  cameraIcon: {
-    fontSize: 22,
-    opacity: 0.6,
-  },
-  inputWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 24,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    marginRight: SPACING.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
-  },
-  inputWrapperDark: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  input: {
-    flex: 1,
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.serif.regular,
-    color: COLORS.ink,
-    paddingVertical: 2,
-  },
-  micButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micIcon: {
-    fontSize: 18,
-    opacity: 0.5,
-  },
-  aiButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-  },
-  aiButtonListening: {
-    backgroundColor: '#FF6B6B',
-    borderColor: '#FF6B6B',
-  },
-  aiIcon: {
-    fontSize: 24,
-  },
-  miraStatus: {
-    position: 'absolute',
-    bottom: 100,
-    left: SPACING.lg,
-    right: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  miraStatusText: {
-    fontFamily: FONTS.sans.medium,
-    fontSize: FONT_SIZES.md,
-  },
-  wakeWordIndicator: {
-    position: 'absolute',
-    bottom: 100,
-    left: SPACING.lg,
-    right: SPACING.lg,
-    alignItems: 'center',
-  },
-  wakeWordText: {
-    fontFamily: FONTS.sans.regular,
-    fontSize: FONT_SIZES.sm,
-    fontStyle: 'italic',
+    fontWeight: '500',
+    color: COLORS.text.secondary,
   },
   storeInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: COLORS.paperDark,
-    borderRadius: 12,
+    borderColor: COLORS.platinum.light,
+    borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    fontFamily: FONTS.serif.regular,
     fontSize: FONT_SIZES.md,
-    color: COLORS.ink,
+    color: COLORS.text.primary,
     marginBottom: SPACING.md,
   },
   buttonDisabled: {

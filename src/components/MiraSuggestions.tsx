@@ -8,6 +8,7 @@ import {
   Animated,
 } from 'react-native';
 import { COLORS, FONTS, FONT_SIZES, SPACING, BORDER_RADIUS, ThemeColors } from '../constants/theme';
+import { MiraIcon } from './icons';
 import type { MiraSuggestion } from '../types';
 
 interface MiraSuggestionsProps {
@@ -106,7 +107,7 @@ export function MiraSuggestions({
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={[styles.sparkle]}>✨</Text>
+          <MiraIcon size={20} color={colors.primary} animated />
           <Text style={[styles.title, { color: colors.ink }]}>Mira suggests</Text>
         </View>
         <View style={[styles.loadingCard, { backgroundColor: colors.paperDark }]}>
@@ -123,7 +124,7 @@ export function MiraSuggestions({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.sparkle]}>✨</Text>
+        <MiraIcon size={20} color={colors.primary} />
         <Text style={[styles.title, { color: colors.ink }]}>Mira suggests</Text>
         <Pressable onPress={onRefresh} style={styles.refreshButton}>
           <Text style={[styles.refreshText, { color: colors.inkLight }]}>Refresh</Text>
@@ -158,10 +159,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
-  },
-  sparkle: {
-    fontSize: 18,
-    marginRight: SPACING.xs,
+    gap: SPACING.sm,
   },
   title: {
     fontFamily: FONTS.serif.regular,
