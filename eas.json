@@ -15,7 +15,14 @@
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "image": "default",
+        "buildType": "app-bundle",
+        "config": {
+          "javaVersion": "17"
+        }
+      }
     }
   }
 }
