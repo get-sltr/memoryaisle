@@ -17,11 +17,8 @@
     "production": {
       "autoIncrement": true,
       "android": {
-        "image": "default",
-        "buildType": "app-bundle",
-        "config": {
-          "javaVersion": "17"
-        }
+        "image": "ubuntu-24.04-jdk-17-ndk-r27b",
+        "buildType": "app-bundle"
       }
     }
   }
