@@ -64,7 +64,7 @@ export default function FavoritesScreen() {
   }, [loadItems]);
 
   const handleToggleFavorite = useCallback(async (item: FavoriteItem) => {
-    const isNowFavorite = await toggleFavorite(item.name);
+    const isNowFavorite = await toggleFavorite(household!.id, item.name);
     setItems(prev =>
       prev.map(i =>
         i.id === item.id ? { ...i, isFavorite: isNowFavorite } : i
@@ -97,7 +97,7 @@ export default function FavoritesScreen() {
       return;
     }
 
-    await addCustomFavorite(newItemName.trim());
+    await addCustomFavorite(household!.id, newItemName.trim());
     setNewItemName('');
     setModalVisible(false);
     loadItems();

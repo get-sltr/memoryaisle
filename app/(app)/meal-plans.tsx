@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
     overflow: 'hidden',
-    ...SHADOWS.elevated,
+    ...SHADOWS.glassElevated,
   },
   floatingButtonIcon: {
     fontSize: 18,

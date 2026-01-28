@@ -11,6 +11,7 @@ import {
   ScrollView,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -18,23 +19,68 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Video, ResizeMode } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signIn, signInWithOAuth } from '../../src/services/auth';
+import Svg, { Path } from 'react-native-svg';
+
+// Apple Logo SVG Component
+function AppleLogo({ size = 18, color = '#000' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+    </Svg>
+  );
+}
+
+// Google Logo SVG Component
+function GoogleLogo({ size = 18 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+      <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+      <Path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+      <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </Svg>
+  );
+}
+
+// Facebook Logo SVG Component
+function FacebookLogo({ size = 18, color = '#FFFFFF' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+    </Svg>
+  );
+}
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 import {
   COLORS,
-  FONTS,
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
   SHADOWS,
 } from '../../src/constants/theme';
 
+// Phone icon component
+function PhoneIcon({ size = 20, color = COLORS.gold.dark }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export default function SignIn() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | null>(null);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | 'apple' | null>(null);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -51,10 +97,10 @@ export default function SignIn() {
       return;
     }
 
-    router.replace('/(auth)/splash');
+    router.replace('/');
   };
 
-  const handleOAuthSignIn = async (provider: 'google' | 'facebook') => {
+  const handleOAuthSignIn = async (provider: 'google' | 'facebook' | 'apple') => {
     setOauthLoading(provider);
     const { success, error } = await signInWithOAuth(provider);
     setOauthLoading(null);
@@ -66,7 +112,7 @@ export default function SignIn() {
       return;
     }
 
-    router.replace('/(auth)/splash');
+    router.replace('/');
   };
 
   return (
@@ -188,60 +234,86 @@ export default function SignIn() {
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Social Login Buttons */}
-              <View style={styles.socialButtons}>
-                {/* Google Button */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.socialButton,
-                    pressed && styles.buttonPressed,
-                    oauthLoading === 'google' && styles.buttonDisabled,
-                  ]}
-                  onPress={() => handleOAuthSignIn('google')}
-                  disabled={loading || oauthLoading !== null}
-                >
-                  <BlurView intensity={20} tint="light" style={styles.socialButtonBlur} />
-                  <LinearGradient
-                    colors={['rgba(255, 255, 255, 0.8)', 'rgba(248, 249, 251, 0.7)']}
-                    style={styles.socialButtonGradient}
-                  />
-                  <View style={styles.socialButtonBorder} />
-                  <View style={styles.socialButtonContent}>
-                    <View style={[styles.socialIcon, styles.googleIcon]}>
-                      <Text style={styles.googleIconText}>G</Text>
-                    </View>
-                    <Text style={styles.socialButtonText}>
-                      {oauthLoading === 'google' ? 'Connecting...' : 'Google'}
-                    </Text>
-                  </View>
-                </Pressable>
+              {/* Sign in with Apple - HIG compliant */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.appleButton,
+                  pressed && styles.buttonPressed,
+                  oauthLoading === 'apple' && styles.buttonDisabled,
+                ]}
+                onPress={() => handleOAuthSignIn('apple')}
+                disabled={loading || oauthLoading !== null}
+              >
+                <View style={styles.appleButtonContent}>
+                  {oauthLoading === 'apple' ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <AppleLogo size={18} color="#FFFFFF" />
+                      <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+                    </>
+                  )}
+                </View>
+              </Pressable>
 
-                {/* Facebook Button */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.socialButton,
-                    pressed && styles.buttonPressed,
-                    oauthLoading === 'facebook' && styles.buttonDisabled,
-                  ]}
-                  onPress={() => handleOAuthSignIn('facebook')}
-                  disabled={loading || oauthLoading !== null}
-                >
-                  <BlurView intensity={20} tint="light" style={styles.socialButtonBlur} />
-                  <LinearGradient
-                    colors={['rgba(255, 255, 255, 0.8)', 'rgba(248, 249, 251, 0.7)']}
-                    style={styles.socialButtonGradient}
-                  />
-                  <View style={styles.socialButtonBorder} />
-                  <View style={styles.socialButtonContent}>
-                    <View style={[styles.socialIcon, styles.facebookIcon]}>
-                      <Text style={styles.facebookIconText}>f</Text>
-                    </View>
-                    <Text style={styles.socialButtonText}>
-                      {oauthLoading === 'facebook' ? 'Connecting...' : 'Facebook'}
-                    </Text>
-                  </View>
-                </Pressable>
-              </View>
+              {/* Sign in with Google */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.googleButton,
+                  pressed && styles.buttonPressed,
+                  oauthLoading === 'google' && styles.buttonDisabled,
+                ]}
+                onPress={() => handleOAuthSignIn('google')}
+                disabled={loading || oauthLoading !== null}
+              >
+                <View style={styles.googleButtonContent}>
+                  {oauthLoading === 'google' ? (
+                    <ActivityIndicator size="small" color={COLORS.text.primary} />
+                  ) : (
+                    <>
+                      <GoogleLogo size={18} />
+                      <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                    </>
+                  )}
+                </View>
+              </Pressable>
+
+              {/* Sign in with Facebook */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.facebookButton,
+                  pressed && styles.buttonPressed,
+                  oauthLoading === 'facebook' && styles.buttonDisabled,
+                ]}
+                onPress={() => handleOAuthSignIn('facebook')}
+                disabled={loading || oauthLoading !== null}
+              >
+                <View style={styles.facebookButtonContent}>
+                  {oauthLoading === 'facebook' ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <FacebookLogo size={18} color="#FFFFFF" />
+                      <Text style={styles.facebookButtonText}>Sign in with Facebook</Text>
+                    </>
+                  )}
+                </View>
+              </Pressable>
+
+              {/* Phone Sign In Button */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.phoneButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                onPress={() => router.push('/(auth)/phone-sign-in')}
+                disabled={loading || oauthLoading !== null}
+              >
+                <View style={styles.phoneButtonContent}>
+                  <PhoneIcon size={18} color={COLORS.gold.dark} />
+                  <Text style={styles.phoneButtonText}>Sign in with Phone</Text>
+                </View>
+              </Pressable>
             </View>
           </View>
 
@@ -418,64 +490,89 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
   },
 
-  // Social Buttons
-  socialButtons: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  socialButton: {
-    flex: 1,
+  // Apple Sign-In - HIG compliant (black, full-width, prominent)
+  appleButton: {
+    backgroundColor: '#000000',
     borderRadius: BORDER_RADIUS.lg,
-    paddingVertical: SPACING.md,
-    overflow: 'hidden',
+    height: 50,
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
   },
-  socialButtonBlur: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  socialButtonGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  socialButtonBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.frost.border,
-  },
-  socialButtonContent: {
+  appleButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
   },
-  socialIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  appleButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  // Google Sign-In - white with border
+  googleButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BORDER_RADIUS.lg,
+    height: 50,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    marginBottom: SPACING.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  googleButtonContent: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: SPACING.sm,
   },
-  googleIcon: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.platinum.base,
-  },
-  googleIconText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#4285F4',
-  },
-  facebookIcon: {
-    backgroundColor: '#1877F2',
-  },
-  facebookIconText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  socialButtonText: {
-    fontSize: FONT_SIZES.sm,
+  googleButtonText: {
+    fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.text.primary,
+  },
+  // Facebook Sign-In - brand blue
+  facebookButton: {
+    backgroundColor: '#1877F2',
+    borderRadius: BORDER_RADIUS.lg,
+    height: 50,
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  facebookButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  facebookButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  // Phone Sign-In
+  phoneButton: {
+    borderRadius: BORDER_RADIUS.lg,
+    height: 50,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 165, 71, 0.3)',
+    backgroundColor: 'rgba(212, 175, 95, 0.08)',
+  },
+  phoneButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  phoneButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.gold.dark,
   },
 
   // Footer

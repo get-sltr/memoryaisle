@@ -39,6 +39,8 @@ yarn-error.*
 supabase/.temp/
 
 # local env files
+.env
+.env.local
 .env*.local
 
 # typescript

@@ -35,6 +35,9 @@ export function SwipeButton({
 
   const maxSlide = Math.max(1, containerWidth - thumbWidth - 8); // 8 for padding, min 1 to avoid animation errors
 
+  const maxSlideRef = useRef(maxSlide);
+  maxSlideRef.current = maxSlide;
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !completed && !disabled,
@@ -43,19 +46,20 @@ export function SwipeButton({
         translateX.setOffset(0);
         translateX.setValue(0);
       },
-      onPanResponderMove: (_, gestureState) => {
-        const newValue = Math.max(0, Math.min(maxSlide, gestureState.dx));
+      onPanResponderMove: (_evt: any, gestureState: { dx: number }) => {
+        const newValue = Math.max(0, Math.min(maxSlideRef.current, gestureState.dx));
         translateX.setValue(newValue);
       },
-      onPanResponderRelease: (_, gestureState) => {
+      onPanResponderRelease: (_evt: any, gestureState: { dx: number }) => {
         translateX.flattenOffset();
 
-        const progress = gestureState.dx / maxSlide;
+        const currentMaxSlide = maxSlideRef.current;
+        const progress = gestureState.dx / currentMaxSlide;
 
         if (progress >= SWIPE_THRESHOLD) {
           // Complete the swipe
           Animated.spring(translateX, {
-            toValue: maxSlide,
+            toValue: currentMaxSlide,
             useNativeDriver: true,
             friction: 8,
           }).start(() => {
@@ -73,38 +77,6 @@ export function SwipeButton({
       },
     })
   ).current;
-
-  // Update panResponder when maxSlide changes
-  React.useEffect(() => {
-    if (containerWidth > 0) {
-      panResponder.panHandlers.onPanResponderMove = (_, gestureState) => {
-        const newValue = Math.max(0, Math.min(maxSlide, gestureState.dx));
-        translateX.setValue(newValue);
-      };
-      panResponder.panHandlers.onPanResponderRelease = (_, gestureState) => {
-        translateX.flattenOffset();
-
-        const progress = gestureState.dx / maxSlide;
-
-        if (progress >= SWIPE_THRESHOLD) {
-          Animated.spring(translateX, {
-            toValue: maxSlide,
-            useNativeDriver: true,
-            friction: 8,
-          }).start(() => {
-            setCompleted(true);
-            onSwipeComplete();
-          });
-        } else {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            friction: 8,
-          }).start();
-        }
-      };
-    }
-  }, [containerWidth, maxSlide]);
 
   // Progress for background color - ensure inputRange is always valid (positive)
   const safeMaxSlide = Math.max(1, maxSlide);

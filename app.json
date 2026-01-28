@@ -2,7 +2,7 @@
   "expo": {
     "name": "MemoryAisle",
     "slug": "memoryaisle",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,8 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.memoryaisle.app",
-      "deploymentTarget": "16.0",
+      "bundleIdentifier": "com.memoryaisle.app", 
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We use your location to show your grocery list when you arrive at a store.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to notify you when you arrive at a store so you never forget your list.",
@@ -83,8 +82,7 @@
       "eas": {
         "projectId": "143688ac-a91a-449d-a4a8-dd6f9663a7a8"
       },
-      "router": {},
-      "picovoiceAccessKey": "${PICOVOICE_ACCESS_KEY}"
+      "router": {}
     },
     "owner": "memoryaisle"
   }

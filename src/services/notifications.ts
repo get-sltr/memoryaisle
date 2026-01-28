@@ -169,11 +169,11 @@ class NotificationService {
   // Remove listeners
   removeNotificationListeners(): void {
     if (this.notificationListener) {
-      Notifications.removeNotificationSubscription(this.notificationListener);
+      this.notificationListener.remove();
       this.notificationListener = null;
     }
     if (this.responseListener) {
-      Notifications.removeNotificationSubscription(this.responseListener);
+      this.responseListener.remove();
       this.responseListener = null;
     }
   }
@@ -231,7 +231,7 @@ class NotificationService {
   ): Promise<string> {
     return this.scheduleNotification(
       { title, body, data },
-      { date },
+      { type: Notifications.SchedulableTriggerInputTypes.DATE, date },
       'reminder'
     );
   }
@@ -253,6 +253,7 @@ class NotificationService {
           data: payload.data || {},
         },
         trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
           weekday,
           hour,
           minute,

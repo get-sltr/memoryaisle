@@ -110,7 +110,7 @@ export default function SettingsScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Redeem',
-          onPress: async (code) => {
+          onPress: async (code: string | undefined) => {
             if (!code?.trim()) return;
             const result = await founderFamilyService.redeemCode(code);
             if (result.success) {
@@ -135,7 +135,7 @@ export default function SettingsScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Generate',
-          onPress: async (label) => {
+          onPress: async (label: string | undefined) => {
             const code = await founderFamilyService.generateCode(label || undefined);
             if (code) {
               Alert.alert(
@@ -283,7 +283,7 @@ export default function SettingsScreen() {
               console.log('Sign out result:', result);
               clearAuthStore();
               console.log('Auth store cleared, navigating...');
-              router.replace('/(auth)/landing');
+              router.replace('/(auth)/sign-in');
             } catch (error) {
               console.error('Sign out error:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');

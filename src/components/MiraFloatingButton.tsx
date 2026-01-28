@@ -18,9 +18,9 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS } from '../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS, HIG } from '../constants/theme';
 import { useAuthStore } from '../stores/authStore';
-import { mira, MiraChatResponse, MiraRecipe, MiraMealPlan } from '../services/mira';
+import { mira, MiraRecipe, MiraMealPlan } from '../services/mira';
 import { getActiveList, addItem } from '../services/lists';
 import { SwipeButton } from './SwipeButton';
 import { supabase } from '../services/supabase';
@@ -48,7 +48,6 @@ export function MiraFloatingButton() {
     y: SCREEN_HEIGHT - BUTTON_SIZE - 120 - (insets.bottom || 34),
   })).current;
 
-  const [isExpanded, setIsExpanded] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -270,16 +269,10 @@ export function MiraFloatingButton() {
         {...panResponder.panHandlers}
       >
         <Pressable onPress={handlePress} style={styles.buttonInner}>
-          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={15} tint="light" style={StyleSheet.absoluteFill} />
           <LinearGradient
-            colors={['rgba(255, 255, 255, 0.9)', 'rgba(250, 248, 245, 0.8)', 'rgba(245, 240, 230, 0.7)']}
+            colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 248, 245, 0.3)', 'rgba(245, 240, 230, 0.25)']}
             style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.6)', 'transparent']}
-            start={{ x: 0.3, y: 0 }}
-            end={{ x: 0.7, y: 0.6 }}
-            style={styles.buttonShine}
           />
           <View style={styles.buttonBorder} />
           <Image
@@ -569,8 +562,8 @@ const styles = StyleSheet.create({
   buttonBorder: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: BUTTON_SIZE / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(212, 165, 71, 0.5)',
+    borderWidth: 2.5,
+    borderColor: 'rgba(212, 165, 71, 0.7)',
   },
   miraIcon: {
     width: 56,
@@ -583,8 +576,8 @@ const styles = StyleSheet.create({
     right: -4,
     bottom: -4,
     borderRadius: (BUTTON_SIZE + 8) / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(212, 165, 71, 0.3)',
+    borderWidth: 2.5,
+    borderColor: 'rgba(212, 165, 71, 0.45)',
   },
 
   // Modal styles
@@ -633,6 +626,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
+    minHeight: HIG.minTouchTarget,      // HIG compliance
+    justifyContent: 'center',
   },
   closeButtonText: {
     fontSize: FONT_SIZES.md,
@@ -841,7 +836,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     borderRadius: BORDER_RADIUS.xl,
     overflow: 'hidden',
-    minHeight: 48,
+    minHeight: HIG.minTouchTarget + 8,  // HIG compliance with padding
   },
   inputBorder: {
     ...StyleSheet.absoluteFillObject,
@@ -863,6 +858,8 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     margin: 4,
     overflow: 'hidden',
+    minHeight: HIG.minTouchTarget - 8,  // Account for margin
+    justifyContent: 'center',
   },
   sendButtonDisabled: {
     opacity: 0.5,

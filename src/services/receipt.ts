@@ -1,10 +1,11 @@
-// Receipt Scanner Service - Compare receipt to list, find missing items
+// Receipt Scanner Service - Compare receipt to list, find missing items, save to history
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 
 export interface ReceiptItem {
   name: string;
+  price?: number | null;
   quantity?: number;
 }
 
@@ -13,6 +14,9 @@ export interface ReceiptScanResult {
   purchasedItems: ReceiptItem[];
   missingItems: string[];
   message: string;
+  storeName?: string;
+  total?: number;
+  savedToHistory?: number;
 }
 
 class ReceiptService {
@@ -45,13 +49,17 @@ class ReceiptService {
   // Scan receipt and compare to list
   async scanAndCompare(
     receiptBase64: string,
-    listItems: string[]
+    listItems: string[],
+    householdId?: string,
+    storeName?: string
   ): Promise<ReceiptScanResult> {
     try {
       const { data, error } = await supabase.functions.invoke('mira-receipt', {
         body: {
           image: receiptBase64,
           listItems,
+          householdId,
+          storeName,
         },
       });
 
@@ -70,6 +78,9 @@ class ReceiptService {
         purchasedItems: data.purchasedItems || [],
         missingItems: data.missingItems || [],
         message: data.message || '',
+        storeName: data.storeName,
+        total: data.total,
+        savedToHistory: data.savedToHistory,
       };
     } catch (error) {
       logger.error('Receipt scan error:', error);
@@ -79,6 +90,51 @@ class ReceiptService {
         missingItems: [],
         message: 'Something went wrong.',
       };
+    }
+  }
+
+  // Get purchase history for household
+  async getPurchaseHistory(householdId: string, limit = 50) {
+    try {
+      const { data, error } = await supabase
+        .from('purchase_history')
+        .select('*')
+        .eq('household_id', householdId)
+        .order('purchased_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        logger.error('Failed to get purchase history:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      logger.error('Failed to get purchase history:', error);
+      return [];
+    }
+  }
+
+  // Get price history for an item
+  async getPriceHistory(householdId: string, itemName: string) {
+    try {
+      const { data, error } = await supabase
+        .from('purchase_history')
+        .select('price, store_name, purchased_at')
+        .eq('household_id', householdId)
+        .ilike('item_name', `%${itemName}%`)
+        .order('purchased_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        logger.error('Failed to get price history:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      logger.error('Failed to get price history:', error);
+      return [];
     }
   }
 }

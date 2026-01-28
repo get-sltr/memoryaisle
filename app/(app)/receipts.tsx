@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS } from '../../src/constants/theme';
 import { receiptService, ReceiptScanResult } from '../../src/services/receipt';
 import { useFeatureAccess } from '../../src/hooks/useSubscription';
+import { useAuthStore } from '../../src/stores/authStore';
 import { PaywallPrompt } from '../../src/components/PaywallPrompt';
 import { useListStore } from '../../src/stores/listStore';
 import { useThemeStore } from '../../src/stores/themeStore';
@@ -22,11 +23,12 @@ import { useThemeStore } from '../../src/stores/themeStore';
 export default function ReceiptsScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeStore();
+  const { user, household } = useAuthStore();
   const { hasAccess, isLoading: subscriptionLoading } = useFeatureAccess('receiptScanning');
   const [showPaywall, setShowPaywall] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [lastResult, setLastResult] = useState<ReceiptScanResult | null>(null);
-  const { items, currentListId, toggleItem } = useListStore();
+  const { items, currentList, completeItem } = useListStore();
 
   useEffect(() => {
     if (!subscriptionLoading && !hasAccess) {
@@ -50,10 +52,11 @@ export default function ReceiptsScreen() {
 
       // Get current list items for comparison
       const listItemNames = items
-        .filter(item => !item.completed)
+        .filter(item => !item.is_completed)
         .map(item => item.name);
 
-      const result = await receiptService.scanAndCompare(base64, listItemNames);
+      console.log("DEBUG receipts:", { householdId: household?.id, hasHousehold: !!household });
+      const result = await receiptService.scanAndCompare(base64, listItemNames, household?.id);
       setLastResult(result);
 
       if (result.success && result.purchasedItems.length > 0) {
@@ -70,8 +73,8 @@ export default function ReceiptsScreen() {
                   const matchingItem = items.find(
                     item => item.name.toLowerCase().includes(purchased.name.toLowerCase())
                   );
-                  if (matchingItem && !matchingItem.completed) {
-                    toggleItem(matchingItem.id);
+                  if (matchingItem && !matchingItem.is_completed) {
+                    completeItem(matchingItem.id);
                   }
                 });
               },
@@ -241,7 +244,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
   },
   title: {
-    fontSize: FONT_SIZES.xxxl,
+    fontSize: FONT_SIZES.xxl,
     fontWeight: '700',
     color: COLORS.text.primary,
   },

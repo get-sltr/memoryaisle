@@ -23,19 +23,18 @@ export interface PhoneAuthResponse extends AuthResponse {
   needsVerification?: boolean;
 }
 
-// Send OTP to phone number via custom AWS SNS
+// Send OTP to phone number via Supabase (Twilio)
 export async function sendPhoneOTP(phone: string): Promise<PhoneAuthResponse> {
   try {
     // Format phone number (ensure it has country code)
     const formattedPhone = formatPhoneNumber(phone);
 
-    // Use custom Edge Function with AWS SNS
-    const { data, error } = await supabase.functions.invoke('send-otp', {
-      body: { phone: formattedPhone },
+    // Use Supabase's built-in phone auth (powered by Twilio)
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: formattedPhone,
     });
 
     if (error) throw error;
-    if (data?.error) throw new Error(data.error);
 
     return { success: true, needsVerification: true };
   } catch (error: any) {
@@ -44,7 +43,7 @@ export async function sendPhoneOTP(phone: string): Promise<PhoneAuthResponse> {
   }
 }
 
-// Verify phone OTP via custom Edge Function
+// Verify phone OTP via Supabase (Twilio)
 export async function verifyPhoneOTP(
   phone: string,
   otp: string
@@ -52,28 +51,15 @@ export async function verifyPhoneOTP(
   try {
     const formattedPhone = formatPhoneNumber(phone);
 
-    // Use custom Edge Function
-    const { data, error } = await supabase.functions.invoke('verify-otp', {
-      body: { phone: formattedPhone, code: otp },
+    // Use Supabase's built-in phone verification
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: formattedPhone,
+      token: otp,
+      type: 'sms',
     });
 
     if (error) throw error;
-    if (data?.error) throw new Error(data.error);
-
-    // If we got an action link, open it to complete auth
-    if (data?.actionLink) {
-      const url = new URL(data.actionLink);
-      const params = new URLSearchParams(url.hash.substring(1));
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-
-      if (accessToken && refreshToken) {
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-      }
-    }
+    if (!data.user) throw new Error('Verification failed');
 
     return { success: true };
   } catch (error: any) {
@@ -129,10 +115,35 @@ export async function signUp(
     if (error) throw error;
     if (!data.user) throw new Error('No user returned');
 
+    // Create user profile (trigger may not work in Supabase)
+    await ensureUserProfile(data.user.id, email, name);
+
     return { success: true };
   } catch (error: any) {
     logger.error('Signup error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+// Ensure user profile exists (creates if missing)
+// Uses database function with SECURITY DEFINER to bypass RLS
+async function ensureUserProfile(userId: string, email: string, name?: string): Promise<void> {
+  try {
+    const { data, error } = await supabase.rpc('create_user_profile', {
+      p_user_id: userId,
+      p_email: email,
+      p_name: name || null,
+    });
+
+    if (error) {
+      logger.error('Error creating user profile:', error);
+      throw error;
+    }
+
+    logger.log('User profile result:', data);
+  } catch (error) {
+    logger.error('ensureUserProfile error:', error);
+    throw error;
   }
 }
 
@@ -309,17 +320,47 @@ export async function signOut(): Promise<AuthResponse> {
   }
 }
 
-// Get current user profile
+// Get current user profile (auto-creates if missing)
 export async function getCurrentUser(): Promise<User | null> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
+    // Try to get existing profile
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('id', user.id)
       .single();
+
+    // If profile exists, return it
+    if (data) return data;
+
+    // If no profile, create one (handles case where trigger failed)
+    if (error?.code === 'PGRST116') {
+      logger.log('User profile missing, creating...');
+
+      // Use RPC function to bypass RLS
+      const { data: result, error: rpcError } = await supabase.rpc('create_user_profile', {
+        p_user_id: user.id,
+        p_email: user.email || '',
+        p_name: user.user_metadata?.name || null,
+      });
+
+      if (rpcError) {
+        logger.error('Failed to create user profile:', rpcError);
+        return null;
+      }
+
+      // Now fetch the created profile
+      const { data: newProfile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      return newProfile;
+    }
 
     if (error) throw error;
     return data;
@@ -446,6 +487,75 @@ export async function joinHousehold(inviteCode: string): Promise<{ household: Ho
   } catch (error: any) {
     return { household: null, error: error.message };
   }
+}
+
+// ==================== 2-STEP AUTH: PHONE VERIFICATION ====================
+
+// Send OTP to link phone to existing authenticated user
+// Different from sendPhoneOTP which creates a new user
+export async function linkPhoneNumber(phone: string): Promise<PhoneAuthResponse> {
+  try {
+    const formattedPhone = formatPhoneNumber(phone);
+
+    // Update the authenticated user's phone number
+    // This will trigger Supabase to send an OTP via Twilio
+    const { error } = await supabase.auth.updateUser({
+      phone: formattedPhone,
+    });
+
+    if (error) throw error;
+
+    return { success: true, needsVerification: true };
+  } catch (error: any) {
+    logger.error('Link phone error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Verify OTP and mark phone as verified in user profile
+export async function verifyPhoneForAccount(
+  phone: string,
+  otp: string
+): Promise<AuthResponse> {
+  try {
+    const formattedPhone = formatPhoneNumber(phone);
+
+    // Verify the OTP with Supabase
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: formattedPhone,
+      token: otp,
+      type: 'phone_change',
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error('Verification failed');
+
+    // Update the user's phone_verified status in public.users
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        phone: formattedPhone,
+        phone_verified: true,
+        phone_verified_at: new Date().toISOString(),
+      })
+      .eq('id', data.user.id);
+
+    if (updateError) {
+      logger.error('Failed to update phone_verified:', updateError);
+      // Don't fail the verification - the phone is linked to auth.users
+      // The user profile update might fail if the row doesn't exist yet
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    logger.error('Phone verification error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Resend OTP for phone linking (uses same link function)
+export async function resendPhoneLinkOTP(phone: string): Promise<AuthResponse> {
+  return linkPhoneNumber(phone);
 }
 
 // Listen to auth state changes

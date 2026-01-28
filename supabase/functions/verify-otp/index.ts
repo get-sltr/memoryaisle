@@ -5,7 +5,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://memoryaisle.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -67,12 +67,43 @@ serve(async (req) => {
       .update({ verified: true })
       .eq('id', verification.id);
 
-    // Check if user exists with this phone
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(u => u.phone === phone);
+    // Try to create user first - if it fails with duplicate, user exists
+    // This approach avoids listing all users (security/performance issue)
+    const tempEmail = `${phone.replace('+', '')}@phone.memoryaisle.app`;
 
-    let session;
     let user;
+    let existingUser = null;
+
+    // Try to create the user - this will fail if phone already exists
+    const { data: newUserData, error: createError } = await supabase.auth.admin.createUser({
+      phone,
+      phone_confirm: true,
+      email: tempEmail,
+      email_confirm: true,
+      user_metadata: {
+        phone_verified: true,
+        signup_method: 'phone',
+      },
+    });
+
+    if (createError) {
+      // Check if error is due to duplicate phone (user exists)
+      if (createError.message?.includes('already') || createError.message?.includes('duplicate')) {
+        // User exists - find them by querying with limited scope
+        // Use listUsers with pagination to find the specific user
+        const { data: usersData } = await supabase.auth.admin.listUsers({
+          page: 1,
+          perPage: 1000, // Reasonable limit
+        });
+        existingUser = usersData?.users?.find(u => u.phone === phone);
+
+        if (!existingUser) {
+          throw new Error('User lookup failed');
+        }
+      } else {
+        throw createError;
+      }
+    }
 
     if (existingUser) {
       // User exists - create session

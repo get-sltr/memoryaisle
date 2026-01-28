@@ -23,10 +23,12 @@ export const COLORS = {
     dark: '#B8860B',
   },
 
-  // Semantic colors
+  // Semantic colors - HIG compliant contrast ratios
+  // WCAG AA: 4.5:1 for normal text, 3:1 for large text
   text: {
-    primary: '#5A6070',
-    secondary: '#8A919D',
+    primary: '#1C1C1E',      // Was #5A6070 - now system label color for proper contrast
+    secondary: '#636366',    // Was #8A919D - now system secondary label
+    tertiary: '#8E8E93',     // Added tertiary for less important text
     inverse: '#FFFFFF',
   },
 
@@ -67,9 +69,9 @@ export const COLORS = {
   // Legacy compatibility (will remove after migration)
   paper: '#FAF6F0',
   paperDark: '#F5EDE0',
-  ink: '#5A6070',
-  inkLight: '#8A919D',
-  inkFaded: '#A8AEB8',
+  ink: '#1C1C1E',           // Updated for contrast
+  inkLight: '#636366',      // Updated for contrast
+  inkFaded: '#8E8E93',      // Updated for contrast
   primary: '#D4A547',
   primaryLight: '#F7E5B3',
   primaryDark: '#B8860B',
@@ -95,10 +97,11 @@ export const COLORS_DARK = {
     dark: '#D4A547',
   },
 
-  // Semantic colors
+  // Semantic colors - HIG compliant for dark mode
   text: {
-    primary: '#E8ECF2',
-    secondary: '#A8AEB8',
+    primary: '#FFFFFF',      // System label for dark mode
+    secondary: '#EBEBF5',    // System secondary label (99% opacity on dark)
+    tertiary: '#EBEBF599',   // System tertiary label (60% opacity)
     inverse: '#1A1D22',
   },
 
@@ -139,9 +142,9 @@ export const COLORS_DARK = {
   // Legacy compatibility
   paper: '#1A1D22',
   paperDark: '#252A32',
-  ink: '#E8ECF2',
-  inkLight: '#A8AEB8',
-  inkFaded: '#5A6575',
+  ink: '#FFFFFF',           // Updated for contrast
+  inkLight: '#EBEBF5',      // Updated for contrast
+  inkFaded: '#EBEBF599',    // Updated for contrast
   primary: '#E8B84A',
   primaryLight: '#F7E5B3',
   primaryDark: '#D4A547',
@@ -151,6 +154,8 @@ export const COLORS_DARK = {
 export type ThemeColors = typeof COLORS;
 
 // ==================== TYPOGRAPHY ====================
+// HIG Compliance: Minimum readable font size is 11pt
+// Body text should be at least 17pt for optimal readability
 
 export const FONTS = {
   // Display - elegant serif for headers
@@ -159,13 +164,13 @@ export const FONTS = {
     medium: 'Playfair Display',
     semibold: 'Playfair Display',
   },
-  // Body - clean sans-serif
+  // Body - clean sans-serif (use system font for Dynamic Type support)
   sans: {
-    light: 'Inter',
-    regular: 'Inter',
-    medium: 'Inter',
-    semibold: 'Inter',
-    bold: 'Inter',
+    light: 'System',
+    regular: 'System',
+    medium: 'System',
+    semibold: 'System',
+    bold: 'System',
   },
   // Handwriting for list items (fallback to system)
   handwriting: {
@@ -179,15 +184,17 @@ export const FONTS = {
   },
 };
 
+// HIG-compliant font sizes
+// Minimum: 11pt, Body: 17pt recommended, Captions: 12pt minimum
 export const FONT_SIZES = {
-  xs: 10,
-  sm: 12,
-  md: 14,
-  lg: 16,
-  xl: 18,
-  xxl: 20,
-  title: 26,
-  hero: 32,
+  xs: 11,      // Was 10 - minimum readable (captions, footnotes)
+  sm: 13,      // Was 12 - small body text, tab labels
+  md: 15,      // Was 14 - secondary body text
+  lg: 17,      // Was 16 - primary body text (HIG recommended)
+  xl: 20,      // Was 18 - emphasized text
+  xxl: 22,     // Was 20 - subheadings
+  title: 28,   // Was 26 - titles
+  hero: 34,    // Was 32 - large display
 };
 
 export const FONT_WEIGHTS = {
@@ -318,6 +325,19 @@ export const GLASS = {
 // ==================== NAV BAR ====================
 
 export const NAV_HEIGHT = {
-  bottom: 80,
+  bottom: 90,       // Was 80 - increased for proper touch targets
   header: 100,
+};
+
+// ==================== HIG COMPLIANCE ====================
+// Minimum touch target size per Apple HIG
+export const HIG = {
+  minTouchTarget: 44,       // Minimum 44x44pt touch target
+  minFontSize: 11,          // Minimum readable font size
+  bodyFontSize: 17,         // Recommended body text size
+  tabBarHeight: 49,         // Standard tab bar height (without safe area)
+  navBarHeight: 44,         // Standard navigation bar height
+  searchBarHeight: 36,      // Standard search bar height
+  buttonMinHeight: 44,      // Minimum button height
+  listRowMinHeight: 44,     // Minimum list row height
 };

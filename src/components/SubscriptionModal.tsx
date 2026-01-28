@@ -15,7 +15,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS } from '../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS, HIG } from '../constants/theme';
 import {
   SUBSCRIPTION_TIERS,
   BillingInterval,
@@ -286,9 +286,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: HIG.minTouchTarget,      // Was 36 - HIG compliance
+    height: HIG.minTouchTarget,     // Was 36 - HIG compliance
+    borderRadius: HIG.minTouchTarget / 2,
     backgroundColor: 'rgba(0, 0, 0, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',

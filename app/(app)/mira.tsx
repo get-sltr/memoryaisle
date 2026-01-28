@@ -15,12 +15,14 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { useThemeStore } from '../../src/stores/themeStore';
 import { useAuthStore } from '../../src/stores/authStore';
 import { mira, getRandomResponse } from '../../src/services/mira';
 import type { ConversationTurn, MiraRecipe } from '../../src/services/mira';
 import { getActiveList, getListItems } from '../../src/services/lists';
+import { saveMiraMealPlan } from '../../src/services/mealPlans';
 import { useFeatureQuota } from '../../src/hooks/useSubscription';
 import { PaywallPrompt, PaywallBanner } from '../../src/components/PaywallPrompt';
 import {
@@ -135,6 +137,25 @@ export default function MiraScreen() {
         }
         return newConversation;
       });
+
+      // If Mira returned a meal plan, save it to the database
+      if (result.mealPlan && household) {
+        try {
+          await saveMiraMealPlan(household.id, result.mealPlan);
+          // Show success alert with option to view
+          Alert.alert(
+            'Meal Plan Created!',
+            `Your ${result.mealPlan.duration}-day meal plan has been saved. You can view and edit it in your Meal Plan.`,
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'View Now', onPress: () => router.push('/mealplan') },
+            ]
+          );
+        } catch (error) {
+          console.error('Failed to save meal plan:', error);
+          // Still show the response, just couldn't save
+        }
+      }
     } catch (error) {
       setConversation(prev => [
         ...prev,
@@ -155,11 +176,29 @@ export default function MiraScreen() {
         const items = activeList ? await getListItems(activeList.id) : [];
         const context = { currentListItems: items.map(i => i.name) };
 
+        console.log('Stopping recording and processing...');
         const result = await mira.stopListening(context);
-        if (result.success && result.response) {
-          setConversation(prev => [...prev, createTurn('assistant', result.response)]);
+        console.log('Mira result:', result);
+
+        // Add user's transcription to conversation if available
+        if (result.transcription) {
+          setConversation(prev => [...prev, createTurn('user', result.transcription!)]);
         }
-      } catch (error) {
+
+        // Add Mira's response
+        if (result.response) {
+          setConversation(prev => [...prev, createTurn('assistant', result.response)]);
+        } else if (!result.success) {
+          const errorMsg = result.error || "I didn't catch that.";
+          Alert.alert('Mira Error', errorMsg);
+          setConversation(prev => [
+            ...prev,
+            createTurn('assistant', "I didn't catch that. Please try again."),
+          ]);
+        }
+      } catch (error: any) {
+        console.error('Voice processing error:', error);
+        Alert.alert('Voice Error', error?.message || 'Unknown error');
         setConversation(prev => [
           ...prev,
           createTurn('assistant', "I didn't catch that. Please try again."),
@@ -170,13 +209,22 @@ export default function MiraScreen() {
     } else {
       // Start listening
       setIsListening(true);
+      console.log('Starting voice recording...');
       try {
         const started = await mira.startListening();
+        console.log('Recording started:', started);
         if (!started) {
           setIsListening(false);
+          Alert.alert(
+            'Microphone Access',
+            'Please allow microphone access in your device settings to use voice input.',
+            [{ text: 'OK' }]
+          );
         }
       } catch (error) {
+        console.error('Failed to start recording:', error);
         setIsListening(false);
+        Alert.alert('Error', 'Could not start voice recording. Please try again.');
       }
     }
   }, [isListening, household]);

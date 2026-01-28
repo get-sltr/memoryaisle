@@ -15,7 +15,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Video, ResizeMode } from 'expo-av';
-import Svg, { Path, Defs, Stop, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import {
   COLORS,
   FONT_SIZES,
@@ -23,6 +23,7 @@ import {
   BORDER_RADIUS,
   SHADOWS,
   ANIMATION,
+  HIG,
 } from '../../src/constants/theme';
 import { signInWithOAuth } from '../../src/services/auth';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -124,14 +125,14 @@ function FacebookLogo({ size = 20, color = '#FFFFFF' }: { size?: number; color?:
 
 export default function LandingScreen() {
   const [isLoading, setIsLoading] = useState<'google' | 'apple' | 'facebook' | null>(null);
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, household } = useAuthStore();
 
   // Redirect if authenticated
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && household) {
       router.replace('/');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, household]);
 
   // Handle social sign in
   const handleSocialSignIn = async (provider: 'google' | 'apple' | 'facebook') => {
@@ -405,112 +406,70 @@ export default function LandingScreen() {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Social Sign In Buttons - Row 1: Apple & Google */}
-          <View style={styles.socialButtonsRow}>
-            {/* Apple Sign In */}
-            <Pressable
-              onPress={() => handleSocialSignIn('apple')}
-              disabled={isLoading !== null}
-              style={({ pressed }) => [
-                styles.glassButton,
-                pressed && styles.buttonPressed,
-                isLoading === 'apple' && styles.buttonLoading,
-              ]}
-            >
-              <LinearGradient
-                colors={[
-                  'rgba(212, 175, 95, 0.85)',
-                  'rgba(212, 165, 71, 0.75)',
-                  'rgba(184, 144, 50, 0.8)',
-                ]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.glassButtonGradient}
-              >
-                <View style={styles.glassButtonInner}>
-                  {isLoading === 'apple' ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <>
-                      <AppleLogo size={20} color="#FFFFFF" />
-                      <Text style={styles.glassButtonText}>Apple</Text>
-                    </>
-                  )}
-                </View>
-                <ShimmerEffect width={150} />
-              </LinearGradient>
-              <View style={styles.glassButtonShine} />
-            </Pressable>
+          {/* Sign in with Apple - HIG-compliant full-width button */}
+          <Pressable
+            onPress={() => handleSocialSignIn('apple')}
+            disabled={isLoading !== null}
+            style={({ pressed }) => [
+              styles.appleSignInButton,
+              pressed && styles.buttonPressed,
+              isLoading === 'apple' && styles.buttonLoading,
+            ]}
+          >
+            <View style={styles.appleSignInInner}>
+              {isLoading === 'apple' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <AppleLogo size={18} color="#FFFFFF" />
+                  <Text style={styles.appleSignInText}>Sign in with Apple</Text>
+                </>
+              )}
+            </View>
+          </Pressable>
 
-            {/* Google Sign In */}
-            <Pressable
-              onPress={() => handleSocialSignIn('google')}
-              disabled={isLoading !== null}
-              style={({ pressed }) => [
-                styles.glassButton,
-                pressed && styles.buttonPressed,
-                isLoading === 'google' && styles.buttonLoading,
-              ]}
-            >
-              <LinearGradient
-                colors={[
-                  'rgba(212, 175, 95, 0.85)',
-                  'rgba(212, 165, 71, 0.75)',
-                  'rgba(184, 144, 50, 0.8)',
-                ]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.glassButtonGradient}
-              >
-                <View style={styles.glassButtonInner}>
-                  {isLoading === 'google' ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <>
-                      <GoogleLogo size={20} />
-                      <Text style={styles.glassButtonText}>Google</Text>
-                    </>
-                  )}
-                </View>
-                <ShimmerEffect width={150} />
-              </LinearGradient>
-              <View style={styles.glassButtonShine} />
-            </Pressable>
-          </View>
+          {/* Google Sign In - Full Width */}
+          <Pressable
+            onPress={() => handleSocialSignIn('google')}
+            disabled={isLoading !== null}
+            style={({ pressed }) => [
+              styles.googleSignInButton,
+              pressed && styles.buttonPressed,
+              isLoading === 'google' && styles.buttonLoading,
+            ]}
+          >
+            <View style={styles.googleSignInInner}>
+              {isLoading === 'google' ? (
+                <ActivityIndicator size="small" color={COLORS.text.primary} />
+              ) : (
+                <>
+                  <GoogleLogo size={18} />
+                  <Text style={styles.googleSignInText}>Sign in with Google</Text>
+                </>
+              )}
+            </View>
+          </Pressable>
 
-          {/* Facebook Sign In Button */}
+          {/* Facebook Sign In - Full Width */}
           <Pressable
             onPress={() => handleSocialSignIn('facebook')}
             disabled={isLoading !== null}
             style={({ pressed }) => [
-              styles.glassButtonWide,
+              styles.facebookSignInButton,
               pressed && styles.buttonPressed,
               isLoading === 'facebook' && styles.buttonLoading,
             ]}
           >
-            <LinearGradient
-              colors={[
-                'rgba(212, 175, 95, 0.85)',
-                'rgba(212, 165, 71, 0.75)',
-                'rgba(184, 144, 50, 0.8)',
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.glassButtonGradient}
-            >
-              <View style={styles.glassButtonInner}>
-                {isLoading === 'facebook' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <FacebookLogo size={20} color="#FFFFFF" />
-                    <Text style={styles.glassButtonText}>Continue with Facebook</Text>
-                  </>
-                )}
-              </View>
-              <ShimmerEffect width={320} />
-            </LinearGradient>
-            <View style={styles.glassButtonShine} />
+            <View style={styles.facebookSignInInner}>
+              {isLoading === 'facebook' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <FacebookLogo size={18} color="#FFFFFF" />
+                  <Text style={styles.facebookSignInText}>Sign in with Facebook</Text>
+                </>
+              )}
+            </View>
           </Pressable>
 
           {/* Sign In Button */}
@@ -529,6 +488,20 @@ export default function LandingScreen() {
               </View>
             </BlurView>
           </Pressable>
+
+          {/* Browse as Guest */}
+          <Pressable
+            onPress={() => {
+              useAuthStore.getState().enterGuestMode();
+              router.replace('/');
+            }}
+            style={({ pressed }) => [
+              styles.guestButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.guestButtonText}>Browse without an account</Text>
+          </Pressable>
         </Animated.View>
       </View>
 
@@ -538,7 +511,7 @@ export default function LandingScreen() {
           Smart lists • Voice assistant • Family sharing
         </Text>
         <Text style={styles.companyName}>SLTR DIGITAL LLC</Text>
-        <Text style={styles.companyTagline}>INTELLIGENCE | INNOVATIVE | INTURATIVE</Text>
+        <Text style={styles.companyTagline}>INTELLIGENT | INNOVATIVE | INTUITIVE</Text>
       </Animated.View>
 
     </View>
@@ -713,9 +686,72 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     letterSpacing: 0.3,
   },
-  socialButtonsRow: {
+  // Apple HIG-compliant Sign in with Apple button
+  appleSignInButton: {
+    backgroundColor: '#000000',
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    height: 50,
+    justifyContent: 'center',
+  },
+  appleSignInInner: {
     flexDirection: 'row',
-    gap: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  appleSignInText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif-medium' }),
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  // Google sign-in button - matching size and prominence
+  googleSignInButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    height: 50,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  googleSignInInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  googleSignInText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif-medium' }),
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  // Facebook sign-in button - matching size and prominence
+  facebookSignInButton: {
+    backgroundColor: '#1877F2',
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    height: 50,
+    justifyContent: 'center',
+  },
+  facebookSignInInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  facebookSignInText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif-medium' }),
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   // Glass button styles with shimmer
   glassButtonPrimary: {
@@ -903,6 +939,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gold.dark,
   },
+  guestButton: {
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+  },
+  guestButtonText: {
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '400',
+    color: COLORS.text.secondary,
+    textDecorationLine: 'underline',
+  },
   buttonPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
@@ -930,9 +977,9 @@ const styles = StyleSheet.create({
   },
   companyTagline: {
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
-    fontSize: 9,
+    fontSize: HIG.minFontSize,    // Was 9 - HIG minimum 11pt
     fontWeight: '400',
-    color: COLORS.text.muted,
+    color: COLORS.text.tertiary,  // Updated from removed 'muted'
     letterSpacing: 1.5,
   },
 });

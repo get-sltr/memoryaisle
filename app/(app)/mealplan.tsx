@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,23 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { useAuthStore } from '../../src/stores/authStore';
+import {
+  getMealPlansForDateRange,
+  getCurrentMealPlan,
+  createEmptyMealPlan,
+  addMealToPlan,
+  updateMeal,
+  deleteMeal,
+  type PlannedMeal,
+  type MealPlanWithMeals,
+} from '../../src/services/mealPlans';
 import {
   COLORS,
   FONTS,
@@ -106,17 +118,77 @@ const MEAL_COLORS: Record<MealType, [string, string]> = {
 };
 
 export default function MealPlanScreen() {
+  const { household, user } = useAuthStore();
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekMeals, setWeekMeals] = useState<Record<string, Meal[]>>({});
+  const [currentPlan, setCurrentPlan] = useState<MealPlanWithMeals | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Modal state for adding/editing meals
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDayId, setEditingDayId] = useState<string | null>(null);
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const [editingDbMealId, setEditingDbMealId] = useState<string | null>(null);
   const [mealName, setMealName] = useState('');
   const [mealType, setMealType] = useState<MealType>('breakfast');
   const [mealCalories, setMealCalories] = useState('');
   const [mealNotes, setMealNotes] = useState('');
+
+  // Load meals from database
+  const loadMeals = useCallback(async () => {
+    if (!household) return;
+
+    try {
+      setIsLoading(true);
+
+      // Calculate week date range
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - dayOfWeek + (weekOffset * 7));
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+      // Get current meal plan
+      const plan = await getCurrentMealPlan(household.id);
+      setCurrentPlan(plan);
+
+      // Get meals for the week
+      const meals = await getMealPlansForDateRange(household.id, startOfWeek, endOfWeek);
+
+      // Convert to our local format grouped by day
+      const mealsByDay: Record<string, Meal[]> = {};
+
+      meals.forEach((dbMeal: PlannedMeal) => {
+        const mealDate = new Date(dbMeal.date);
+        const dayIndex = Math.floor((mealDate.getTime() - startOfWeek.getTime()) / (1000 * 60 * 60 * 24));
+        const dayId = `day-${dayIndex}`;
+
+        if (!mealsByDay[dayId]) {
+          mealsByDay[dayId] = [];
+        }
+
+        mealsByDay[dayId].push({
+          id: dbMeal.id,
+          type: dbMeal.meal_type as MealType,
+          name: dbMeal.name,
+          calories: dbMeal.calories || undefined,
+          notes: dbMeal.description || undefined,
+        });
+      });
+
+      setWeekMeals(mealsByDay);
+    } catch (error) {
+      console.error('Failed to load meals:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [household, weekOffset]);
+
+  // Load meals on mount and when week changes
+  useEffect(() => {
+    loadMeals();
+  }, [loadMeals]);
 
   const weekData = useMemo(() => {
     const days = generateWeekData(weekOffset);
@@ -140,6 +212,7 @@ export default function MealPlanScreen() {
   const openAddMealModal = useCallback((dayId: string) => {
     setEditingDayId(dayId);
     setEditingMeal(null);
+    setEditingDbMealId(null);
     setMealName('');
     setMealType('breakfast');
     setMealCalories('');
@@ -150,6 +223,7 @@ export default function MealPlanScreen() {
   const openEditMealModal = useCallback((dayId: string, meal: Meal) => {
     setEditingDayId(dayId);
     setEditingMeal(meal);
+    setEditingDbMealId(meal.id); // This is now the database UUID
     setMealName(meal.name);
     setMealType(meal.type);
     setMealCalories(meal.calories ? String(meal.calories) : '');
@@ -161,45 +235,104 @@ export default function MealPlanScreen() {
     setModalVisible(false);
     setEditingDayId(null);
     setEditingMeal(null);
+    setEditingDbMealId(null);
     setMealName('');
     setMealCalories('');
     setMealNotes('');
   }, []);
 
-  const saveMeal = useCallback(() => {
-    if (!editingDayId || !mealName.trim()) {
+  // Helper to get date string from dayId
+  const getDateFromDayId = useCallback((dayId: string) => {
+    const dayIndex = parseInt(dayId.replace('day-', ''), 10);
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - dayOfWeek + (weekOffset * 7));
+    const targetDate = new Date(startOfWeek);
+    targetDate.setDate(startOfWeek.getDate() + dayIndex);
+    return targetDate.toISOString().split('T')[0];
+  }, [weekOffset]);
+
+  const saveMeal = useCallback(async () => {
+    if (!editingDayId || !mealName.trim() || !household) {
       Alert.alert('Missing Info', 'Please enter a meal name');
       return;
     }
 
     const calories = mealCalories ? parseInt(mealCalories, 10) : undefined;
 
-    if (editingMeal) {
-      // Update existing meal
-      setWeekMeals(prev => ({
-        ...prev,
-        [editingDayId]: (prev[editingDayId] || []).map(m =>
-          m.id === editingMeal.id
-            ? { ...m, name: mealName.trim(), type: mealType, calories, notes: mealNotes.trim() || undefined }
-            : m
-        ),
-      }));
-    } else {
-      // Add new meal
-      const newMeal: Meal = {
-        id: `${editingDayId}-${Date.now()}`,
-        type: mealType,
-        name: mealName.trim(),
-        calories,
-        notes: mealNotes.trim() || undefined,
-      };
-      setWeekMeals(prev => ({
-        ...prev,
-        [editingDayId]: [...(prev[editingDayId] || []), newMeal],
-      }));
+    try {
+      if (editingDbMealId) {
+        // Update existing meal in database
+        await updateMeal(editingDbMealId, {
+          name: mealName.trim(),
+          description: mealNotes.trim() || undefined,
+          calories,
+        });
+
+        // Update local state
+        setWeekMeals(prev => ({
+          ...prev,
+          [editingDayId]: (prev[editingDayId] || []).map(m =>
+            m.id === editingDbMealId
+              ? { ...m, name: mealName.trim(), type: mealType, calories, notes: mealNotes.trim() || undefined }
+              : m
+          ),
+        }));
+      } else {
+        // Create new meal - first ensure we have a meal plan
+        let planId = currentPlan?.id;
+
+        if (!planId) {
+          // Create a meal plan for this week
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - dayOfWeek + (weekOffset * 7));
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+          const newPlan = await createEmptyMealPlan(
+            household.id,
+            'Weekly Meal Plan',
+            startOfWeek,
+            endOfWeek,
+            user?.id
+          );
+          planId = newPlan.id;
+          setCurrentPlan({ ...newPlan, planned_meals: [] });
+        }
+
+        // Get the date for this day
+        const mealDate = getDateFromDayId(editingDayId);
+
+        // Add meal to database
+        const newDbMeal = await addMealToPlan(planId, mealDate, {
+          meal_type: mealType,
+          name: mealName.trim(),
+          description: mealNotes.trim() || undefined,
+          calories,
+        });
+
+        // Update local state with the database meal
+        const newMeal: Meal = {
+          id: newDbMeal.id,
+          type: mealType,
+          name: mealName.trim(),
+          calories,
+          notes: mealNotes.trim() || undefined,
+        };
+        setWeekMeals(prev => ({
+          ...prev,
+          [editingDayId]: [...(prev[editingDayId] || []), newMeal],
+        }));
+      }
+      closeModal();
+    } catch (error) {
+      console.error('Failed to save meal:', error);
+      Alert.alert('Error', 'Failed to save meal. Please try again.');
     }
-    closeModal();
-  }, [editingDayId, editingMeal, mealName, mealType, mealCalories, mealNotes, closeModal]);
+  }, [editingDayId, editingDbMealId, mealName, mealType, mealCalories, mealNotes, closeModal, household, user, currentPlan, weekOffset, getDateFromDayId]);
 
   const handleRemoveMeal = useCallback((dayId: string, mealId: string) => {
     Alert.alert(
@@ -210,11 +343,20 @@ export default function MealPlanScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setWeekMeals(prev => ({
-              ...prev,
-              [dayId]: (prev[dayId] || []).filter(m => m.id !== mealId),
-            }));
+          onPress: async () => {
+            try {
+              // Delete from database
+              await deleteMeal(mealId);
+
+              // Update local state
+              setWeekMeals(prev => ({
+                ...prev,
+                [dayId]: (prev[dayId] || []).filter(m => m.id !== mealId),
+              }));
+            } catch (error) {
+              console.error('Failed to delete meal:', error);
+              Alert.alert('Error', 'Failed to delete meal. Please try again.');
+            }
           },
         },
       ]
@@ -283,22 +425,29 @@ export default function MealPlanScreen() {
       </View>
 
       {/* Week View */}
-      <ScrollView
-        style={styles.weekView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.weekViewContent}
-      >
-        {weekData.map((day) => (
-          <DayCard
-            key={day.id}
-            day={day}
-            dayCalories={getDayCalories(day.id)}
-            onAddMeal={() => openAddMealModal(day.id)}
-            onEditMeal={(meal) => openEditMealModal(day.id, meal)}
-            onRemoveMeal={(mealId) => handleRemoveMeal(day.id, mealId)}
-          />
-        ))}
-      </ScrollView>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.gold.base} />
+          <Text style={styles.loadingText}>Loading meals...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.weekView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.weekViewContent}
+        >
+          {weekData.map((day) => (
+            <DayCard
+              key={day.id}
+              day={day}
+              dayCalories={getDayCalories(day.id)}
+              onAddMeal={() => openAddMealModal(day.id)}
+              onEditMeal={(meal) => openEditMealModal(day.id, meal)}
+              onRemoveMeal={(mealId) => handleRemoveMeal(day.id, mealId)}
+            />
+          ))}
+        </ScrollView>
+      )}
 
       {/* Add/Edit Meal Modal */}
       <Modal
@@ -614,6 +763,18 @@ const styles = StyleSheet.create({
   weekViewContent: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: 120, // Extra padding for scroll
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.md,
+  },
+  loadingText: {
+    fontFamily: FONTS?.serif?.regular || 'Georgia',
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+    fontStyle: 'italic',
   },
   dayCard: {
     borderRadius: BORDER_RADIUS.xl,

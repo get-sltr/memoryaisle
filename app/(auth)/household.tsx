@@ -9,7 +9,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { createHousehold, joinHousehold } from '../../src/services/auth';
+import { createHousehold, joinHousehold, getCurrentUser } from '../../src/services/auth';
 import { useAuthStore } from '../../src/stores/authStore';
 import { PaywallPrompt } from '../../src/components/PaywallPrompt';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '../../src/constants/theme';
@@ -31,7 +31,7 @@ export default function HouseholdSetup() {
   const [loading, setLoading] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
 
-  const { setHousehold } = useAuthStore();
+  const { setHousehold, setUser } = useAuthStore();
 
   const handleCreate = async () => {
     if (!householdName.trim()) {
@@ -53,8 +53,16 @@ export default function HouseholdSetup() {
       return;
     }
 
+    // Refresh user to get updated household_id
+    const updatedUser = await getCurrentUser();
+    if (updatedUser) {
+      setUser(updatedUser);
+    }
+
+    console.log("DEBUG: Setting household:", household?.id);
     setHousehold(household);
-    router.replace('/');
+    // Navigate directly to app to bypass root router check
+    router.replace('/(app)');
   };
 
   const handleJoin = async () => {
@@ -87,8 +95,16 @@ export default function HouseholdSetup() {
       return;
     }
 
+    // Refresh user to get updated household_id
+    const updatedUser = await getCurrentUser();
+    if (updatedUser) {
+      setUser(updatedUser);
+    }
+
+    console.log("DEBUG: Setting household:", household?.id);
     setHousehold(household);
-    router.replace('/');
+    // Navigate directly to app to bypass root router check
+    router.replace('/(app)');
   };
 
   return (

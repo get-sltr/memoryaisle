@@ -162,19 +162,20 @@ class IAPService {
 
     try {
       // Set up purchase listener
-      this.purchaseSubscription$ = InAppPurchases.setPurchaseListener(
+      const IAP = InAppPurchases!;
+      IAP.setPurchaseListener(
         async ({ responseCode, results, errorCode }) => {
-          if (responseCode === InAppPurchases.IAPResponseCode.OK && results) {
+          if (responseCode === IAP.IAPResponseCode.OK && results) {
             for (const purchase of results) {
               if (!purchase.acknowledged) {
                 // Verify and save the purchase
                 await this.verifyAndSavePurchase(userId, purchase);
 
                 // Finish the transaction
-                await InAppPurchases.finishTransactionAsync(purchase, true);
+                await IAP.finishTransactionAsync(purchase, true);
               }
             }
-          } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
+          } else if (responseCode === IAP.IAPResponseCode.USER_CANCELED) {
             logger.log('Purchase canceled by user');
           } else {
             logger.error('Purchase failed:', errorCode);
@@ -194,7 +195,7 @@ class IAPService {
   // Verify and save purchase to database
   private async verifyAndSavePurchase(
     userId: string,
-    purchase: InAppPurchases.InAppPurchase
+    purchase: any
   ): Promise<boolean> {
     try {
       // Determine billing interval from product ID

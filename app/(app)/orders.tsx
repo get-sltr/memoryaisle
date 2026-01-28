@@ -37,7 +37,7 @@ export default function OrdersPage() {
   const { colors, isDark } = useThemeStore();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, household } = useAuthStore();
 
   // Theme-aware colors
   const cardBg = isDark ? colors.frost.bgHeavy : '#fff';
@@ -54,21 +54,40 @@ export default function OrdersPage() {
     if (user?.id) {
       loadOrders();
     }
-  }, [user?.id]);
+  }, [household?.id]);
 
   const loadOrders = async () => {
-    if (!user?.id) return;
+    if (!household?.id) return;
 
     try {
       const { data, error } = await supabase
-        .from('orders')
+        .from('purchase_history')
         .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .eq('household_id', household.id)
+        .order('purchased_at', { ascending: false });
 
-      if (data) {
-        setOrders(data);
-        calculateSpending(data);
+      if (data && data.length > 0) {
+        const groupedOrders: { [key: string]: Order } = {};
+
+        data.forEach((item: any) => {
+          const date = new Date(item.purchased_at).toDateString();
+          const key = `${date}-${item.store_name || 'Unknown Store'}`;
+
+          if (!groupedOrders[key]) {
+            groupedOrders[key] = {
+              id: key,
+              store_name: item.store_name || 'Unknown Store',
+              total: 0,
+              items_count: 0,
+              created_at: item.purchased_at,
+            };
+          }
+          groupedOrders[key].total += item.price || 0;
+          groupedOrders[key].items_count += 1;
+        });
+
+        setOrders(Object.values(groupedOrders));
+        calculateSpending(Object.values(groupedOrders));
       }
     } catch (error) {
       console.error('Error loading orders:', error);
@@ -76,6 +95,7 @@ export default function OrdersPage() {
       setIsLoading(false);
     }
   };
+
 
   const calculateSpending = (ordersList: Order[]) => {
     const now = new Date();

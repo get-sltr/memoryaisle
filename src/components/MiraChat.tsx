@@ -27,6 +27,7 @@ import {
   SPACING,
   BORDER_RADIUS,
   SHADOWS,
+  HIG,
 } from '../constants/theme';
 import { MiraIcon, MiraListeningIcon } from './icons';
 import type { ConversationTurn } from '../services/mira';
@@ -387,9 +388,9 @@ const styles = StyleSheet.create({
     color: COLORS.gold.dark,
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.md,
+    width: HIG.minTouchTarget,      // Was 36 - HIG compliance
+    height: HIG.minTouchTarget,     // Was 36 - HIG compliance
+    borderRadius: BORDER_RADIUS.lg,
     backgroundColor: 'rgba(0,0,0,0.05)',
     alignItems: 'center',
     justifyContent: 'center',

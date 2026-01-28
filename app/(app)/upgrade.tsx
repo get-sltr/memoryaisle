@@ -9,6 +9,8 @@ import {
   ScrollView,
   Pressable,
   Linking,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -16,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../src/constants/theme';
 import { useSubscription } from '../../src/hooks/useSubscription';
-import { BillingInterval, stripeService } from '../../src/services/stripe';
+import { BillingInterval, SUBSCRIPTION_TIERS } from '../../src/services/iap';
 import { useThemeStore } from '../../src/stores/themeStore';
 
 const PREMIUM_FEATURES = [
@@ -45,17 +47,51 @@ export default function UpgradePage() {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeStore();
   const router = useRouter();
-  const { isPremium } = useSubscription();
+  const { isPremium, purchaseMonthly, purchaseYearly, restorePurchases } = useSubscription();
   const [selectedInterval, setSelectedInterval] = useState<BillingInterval>('year');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const savings = stripeService.getYearlySavings();
+  // Calculate savings
+  const monthlyTotal = SUBSCRIPTION_TIERS.premium.price.monthly * 12;
+  const yearlyPrice = SUBSCRIPTION_TIERS.premium.price.yearly;
+  const savingsAmount = monthlyTotal - yearlyPrice;
+  const savingsPercentage = Math.round((savingsAmount / monthlyTotal) * 100);
 
-  const handleSubscribe = () => {
-    // Navigate to custom checkout screen
-    router.push({
-      pathname: '/(app)/checkout',
-      params: { interval: selectedInterval },
-    });
+  const handleSubscribe = async () => {
+    setIsLoading(true);
+    try {
+      const success = selectedInterval === 'year'
+        ? await purchaseYearly()
+        : await purchaseMonthly();
+
+      if (success) {
+        Alert.alert(
+          'Welcome to Premium!',
+          'Your subscription is now active. Enjoy unlimited access to all features!',
+          [{ text: 'Get Started', onPress: () => router.replace('/(app)') }]
+        );
+      }
+    } catch (error) {
+      Alert.alert('Purchase Failed', 'Please try again or contact support.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setIsLoading(true);
+    try {
+      const success = await restorePurchases();
+      if (success) {
+        Alert.alert('Restored!', 'Your subscription has been restored.');
+      } else {
+        Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
+      }
+    } catch (error) {
+      Alert.alert('Restore Failed', 'Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (isPremium) {
@@ -81,9 +117,9 @@ export default function UpgradePage() {
           </Text>
           <Pressable
             style={styles.manageButton}
-            onPress={async () => {
-              const url = await stripeService.createPortalSession('');
-              if (url) Linking.openURL(url);
+            onPress={() => {
+              // Open App Store subscription management
+              Linking.openURL('https://apps.apple.com/account/subscriptions');
             }}
           >
             <Text style={styles.manageButtonText}>Manage Subscription</Text>
@@ -148,7 +184,7 @@ export default function UpgradePage() {
                 <Text style={styles.planPeriod}>/year</Text>
               </View>
               <Text style={styles.monthlyBreakdown}>Just $3.99/month</Text>
-              <Text style={styles.savingsText}>Save {savings.percentage}% (${savings.amount.toFixed(2)})</Text>
+              <Text style={styles.savingsText}>Save {savingsPercentage}% (${savingsAmount.toFixed(2)})</Text>
               <Text style={styles.trialText}>Start with 3 days free</Text>
             </View>
           </View>
@@ -233,18 +269,24 @@ export default function UpgradePage() {
       <View style={[styles.ctaContainer, { paddingBottom: insets.bottom + SPACING.md }]}>
         <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
         <Pressable
-          style={styles.ctaButton}
+          style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
           onPress={handleSubscribe}
+          disabled={isLoading}
         >
           <LinearGradient
-            colors={[COLORS.gold.light, COLORS.gold.base]}
+            colors={isLoading ? ['#CCCCCC', '#AAAAAA'] : [COLORS.gold.light, COLORS.gold.base]}
             style={StyleSheet.absoluteFill}
           />
-          <Text style={styles.ctaText}>
-            {selectedInterval === 'year'
-              ? 'Continue to Checkout'
-              : 'Continue to Checkout'}
-          </Text>
+          {isLoading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.ctaText}>
+              {selectedInterval === 'year' ? 'Start Free Trial' : 'Subscribe Now'}
+            </Text>
+          )}
+        </Pressable>
+        <Pressable onPress={handleRestore} style={styles.restoreButton}>
+          <Text style={styles.restoreText}>Restore Purchases</Text>
         </Pressable>
       </View>
     </View>
@@ -510,5 +552,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  ctaButtonDisabled: {
+    opacity: 0.7,
+  },
+  restoreButton: {
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+  },
+  restoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text.secondary,
+    textDecorationLine: 'underline',
   },
 });

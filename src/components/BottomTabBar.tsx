@@ -7,9 +7,9 @@ import {
   COLORS,
   SPACING,
   BORDER_RADIUS,
-  FONTS,
   FONT_SIZES,
   SHADOWS,
+  HIG,
 } from '../constants/theme';
 // MiraIcon removed - Mira now uses floating button only
 
@@ -135,10 +135,6 @@ const FavsIcon = ({ active }: { active: boolean }) => (
   </View>
 );
 
-const RecipesIcon = ({ active }: { active: boolean }) => (
-  <GlassTabIcon source={TAB_ICONS.recipes} active={active} />
-);
-
 const SettingsIcon = ({ active }: { active: boolean }) => (
   <View style={[styles.iconGlassWrapper, active && styles.iconGlassWrapperActive]}>
     <LinearGradient
@@ -191,12 +187,11 @@ const TABS: TabConfig[] = [
 ];
 
 interface BottomTabBarProps {
-  state: any;
-  descriptors: any;
-  navigation: any;
+  readonly state: any;
+  readonly navigation: any;
 }
 
-export function BottomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -234,7 +229,6 @@ export function BottomTabBar({ state, descriptors, navigation }: BottomTabBarPro
               const tabConfig = TABS.find((t) => t.name === route.name);
               if (!tabConfig) return null;
 
-              const { options } = descriptors[route.key];
               const isFocused = state.index === index;
 
               const onPress = () => {
@@ -362,20 +356,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: SPACING.xs + 2,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,        // Was xs+2 (6pt) - now 8pt
+    paddingHorizontal: SPACING.sm,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
+    minHeight: HIG.minTouchTarget,      // Ensure 44pt minimum touch target
+    justifyContent: 'center',
   },
   tabItemInner: {
-    paddingVertical: SPACING.xs + 2,
+    paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
     borderRadius: BORDER_RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    minHeight: HIG.minTouchTarget,      // Ensure 44pt minimum
   },
   tabItemActive: {
     ...SHADOWS.goldGlow,
@@ -395,9 +392,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   iconGlassWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: HIG.minTouchTarget,    // Was 32 - now 44pt for HIG compliance
+    height: HIG.minTouchTarget,   // Was 32 - now 44pt for HIG compliance
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -422,27 +419,26 @@ const styles = StyleSheet.create({
     height: '55%',
   },
   tabIconImage: {
-    width: 22,
-    height: 22,
+    width: 26,            // Was 22 - slightly larger for visibility
+    height: 26,           // Was 22
     resizeMode: 'contain',
-    opacity: 0.7,
+    opacity: 0.8,
   },
   tabIconImageActive: {
     opacity: 1,
   },
   icon: {
-    fontSize: 18,
-    opacity: 0.7,
+    fontSize: 22,         // Was 18 - larger for visibility
+    opacity: 0.8,
   },
   iconActive: {
     opacity: 1,
   },
   tabLabel: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: FONT_SIZES.xs,    // Now 11pt (was 10pt) - HIG minimum
     fontWeight: '600',
     color: COLORS.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   tabLabelActive: {
     color: COLORS.white,

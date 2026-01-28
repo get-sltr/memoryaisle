@@ -18,7 +18,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const newIsDark = !get().isDark;
     set({
       isDark: newIsDark,
-      colors: newIsDark ? COLORS_DARK : COLORS,
+      colors: newIsDark ? COLORS_DARK as unknown as ThemeColors : COLORS,
     });
     await SecureStore.setItemAsync('theme', newIsDark ? 'dark' : 'light');
   },
@@ -29,7 +29,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       const isDark = savedTheme === 'dark';
       set({
         isDark,
-        colors: isDark ? COLORS_DARK : COLORS,
+        colors: isDark ? COLORS_DARK as unknown as ThemeColors : COLORS,
       });
     } catch (error) {
       logger.error('Error loading theme:', error);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,17 @@ import {
   Pressable,
   StyleSheet,
   Image,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { useAuthStore } from '../../src/stores/authStore';
+import { getRecipes, addRecipeToList } from '../../src/services/recipes';
+import type { Recipe } from '../../src/types';
 import {
   COLORS,
   FONTS,
@@ -19,52 +26,191 @@ import {
   SHADOWS,
 } from '../../src/constants/theme';
 
-// Mock recipes data
-const RECIPES = [
+// Default sample recipes shown to all users
+const DEFAULT_RECIPES: Recipe[] = [
   {
-    id: '1',
-    title: 'Honey Garlic Chicken',
-    emoji: '\u{1F357}',
-    time: '35 min',
+    id: 'default-1',
+    household_id: '',
+    name: 'Honey Garlic Chicken',
+    emoji: '🍗',
+    description: 'Sweet and savory chicken thighs glazed with a delicious honey garlic sauce.',
+    total_time: '35 min',
     servings: 4,
-    byMira: true,
+    ingredients: [
+      { item: 'chicken thighs', amount: '2 lbs' },
+      { item: 'honey', amount: '1/4 cup' },
+      { item: 'garlic', amount: '4 cloves, minced' },
+      { item: 'soy sauce', amount: '3 tbsp' },
+      { item: 'olive oil', amount: '2 tbsp' },
+    ],
+    instructions: [
+      'Season chicken thighs with salt and pepper.',
+      'Heat olive oil in a large skillet over medium-high heat.',
+      'Sear chicken until golden brown, about 4-5 minutes per side.',
+      'Mix honey, garlic, and soy sauce in a small bowl.',
+      'Pour sauce over chicken and simmer for 15 minutes until cooked through.',
+      'Serve with rice and garnish with green onions.',
+    ],
+    source: 'mira',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
-    id: '2',
-    title: 'Creamy Tuscan Pasta',
-    emoji: '\u{1F35D}',
-    time: '25 min',
+    id: 'default-2',
+    household_id: '',
+    name: 'Creamy Tuscan Pasta',
+    emoji: '🍝',
+    description: 'Rich and creamy Italian pasta with sun-dried tomatoes and spinach.',
+    total_time: '25 min',
     servings: 4,
-    byMira: true,
+    ingredients: [
+      { item: 'penne pasta', amount: '1 lb' },
+      { item: 'heavy cream', amount: '1 cup' },
+      { item: 'sun-dried tomatoes', amount: '1/2 cup, chopped' },
+      { item: 'fresh spinach', amount: '2 cups' },
+      { item: 'parmesan cheese', amount: '1/2 cup, grated' },
+      { item: 'garlic', amount: '3 cloves, minced' },
+    ],
+    instructions: [
+      'Cook pasta according to package directions. Reserve 1/2 cup pasta water.',
+      'In a large pan, sauté garlic in olive oil until fragrant.',
+      'Add heavy cream and sun-dried tomatoes, simmer for 3 minutes.',
+      'Toss in spinach and stir until wilted.',
+      'Add cooked pasta and parmesan, toss to coat.',
+      'Add pasta water if needed for consistency. Season and serve.',
+    ],
+    source: 'mira',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
-    id: '3',
-    title: 'Mediterranean Salad',
-    emoji: '\u{1F957}',
-    time: '15 min',
+    id: 'default-3',
+    household_id: '',
+    name: 'Avocado Toast',
+    emoji: '🥑',
+    description: 'Simple, healthy, and delicious breakfast or snack.',
+    total_time: '10 min',
     servings: 2,
-    byMira: true,
-  },
-  {
-    id: '4',
-    title: 'Avocado Toast',
-    emoji: '\u{1F951}',
-    time: '10 min',
-    servings: 2,
-    byMira: false,
+    ingredients: [
+      { item: 'sourdough bread', amount: '2 slices' },
+      { item: 'ripe avocado', amount: '1 large' },
+      { item: 'lemon juice', amount: '1 tsp' },
+      { item: 'red pepper flakes', amount: 'pinch', optional: true },
+      { item: 'everything bagel seasoning', amount: '1 tsp', optional: true },
+    ],
+    instructions: [
+      'Toast bread until golden and crispy.',
+      'Cut avocado in half, remove pit, and scoop into a bowl.',
+      'Mash avocado with lemon juice, salt, and pepper.',
+      'Spread mashed avocado generously on toast.',
+      'Top with red pepper flakes or everything bagel seasoning.',
+    ],
+    source: 'manual',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   },
 ];
 
 export default function RecipesScreen() {
+  const { household } = useAuthStore();
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [addingToList, setAddingToList] = useState<string | null>(null);
+
+  const loadRecipes = useCallback(async () => {
+    if (!household?.id) {
+      console.log('No household ID, showing default recipes');
+      setRecipes(DEFAULT_RECIPES);
+      setLoading(false);
+      return;
+    }
+
+    console.log('Loading recipes for household:', household.id);
+    try {
+      const data = await getRecipes(household.id);
+      console.log('Loaded recipes:', data.length);
+      // Show default recipes if user has none
+      setRecipes(data.length > 0 ? data : DEFAULT_RECIPES);
+    } catch (error) {
+      console.error('Error loading recipes:', error);
+      // Show defaults on error too
+      setRecipes(DEFAULT_RECIPES);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [household?.id]);
+
+  useEffect(() => {
+    loadRecipes();
+  }, [loadRecipes]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadRecipes();
+  }, [loadRecipes]);
+
   const handleOpenMira = () => {
     // TODO: Open Mira chat for recipe suggestions
     console.log('Opening Mira for recipes');
   };
 
-  const handleAddToList = (id: string) => {
-    // TODO: Add recipe ingredients to list
-    console.log('Adding recipe to list:', id);
-  };
+  const handleAddToList = useCallback(async (recipe: Recipe) => {
+    if (!household?.id) return;
+
+    setAddingToList(recipe.id);
+    try {
+      const result = await addRecipeToList(household.id, recipe);
+      if (result.success) {
+        Alert.alert(
+          'Added to List!',
+          `${result.addedCount} ingredient${result.addedCount !== 1 ? 's' : ''} from "${recipe.name}" added to your shopping list.`
+        );
+      } else {
+        Alert.alert('Error', 'Could not add ingredients to list. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error adding to list:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setAddingToList(null);
+    }
+  }, [household?.id]);
+
+  const handleViewRecipe = useCallback((recipe: Recipe) => {
+    setSelectedRecipe(recipe);
+  }, []);
+
+  const handleCloseRecipe = useCallback(() => {
+    setSelectedRecipe(null);
+  }, []);
+
+  // Loading state
+  if (loading) {
+    return (
+      <ScreenWrapper>
+        <View style={styles.header}>
+          <View style={styles.titleContainer}>
+            <Image
+              source={require('../../assets/theapp.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <View>
+              <Text style={styles.title}>Recipes</Text>
+              <Text style={styles.subtitle}>Your Collection</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.gold.base} />
+          <Text style={styles.loadingText}>Loading recipes...</Text>
+        </View>
+      </ScreenWrapper>
+    );
+  }
 
   return (
     <ScreenWrapper>
@@ -96,29 +242,81 @@ export default function RecipesScreen() {
         style={styles.container}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-      >
-        {/* Section Label */}
-        <Text style={styles.sectionLabel}>Recent from Mira</Text>
-
-        {/* Recipes List */}
-        {RECIPES.map((recipe) => (
-          <RecipeCard
-            key={recipe.id}
-            recipe={recipe}
-            onAddToList={() => handleAddToList(recipe.id)}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.gold.base}
           />
-        ))}
+        }
+      >
+        {/* Empty State */}
+        {recipes.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyEmoji}>{'\u{1F373}'}</Text>
+            <Text style={styles.emptyTitle}>No Recipes Yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Ask Mira to suggest recipes or add your own favorites!
+            </Text>
+            <Pressable style={styles.emptyButton} onPress={handleOpenMira}>
+              <LinearGradient
+                colors={[COLORS.gold.light, COLORS.gold.base]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.emptyButtonGradient}
+              />
+              <Text style={styles.emptyButtonText}>{'\u2726'} Ask Mira for Ideas</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            {/* Section Label */}
+            <Text style={styles.sectionLabel}>Your Recipes</Text>
+
+            {/* Recipes List */}
+            {recipes.map((recipe) => (
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                onAddToList={() => handleAddToList(recipe)}
+                onViewRecipe={() => handleViewRecipe(recipe)}
+                isAddingToList={addingToList === recipe.id}
+              />
+            ))}
+          </>
+        )}
       </ScrollView>
+
+      {/* Recipe Detail Modal */}
+      <Modal
+        visible={selectedRecipe !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCloseRecipe}
+      >
+        {selectedRecipe && (
+          <RecipeDetailView
+            recipe={selectedRecipe}
+            onClose={handleCloseRecipe}
+            onAddToList={() => {
+              handleAddToList(selectedRecipe);
+              handleCloseRecipe();
+            }}
+          />
+        )}
+      </Modal>
     </ScreenWrapper>
   );
 }
 
 interface RecipeCardProps {
-  recipe: typeof RECIPES[0];
+  recipe: Recipe;
   onAddToList: () => void;
+  onViewRecipe: () => void;
+  isAddingToList: boolean;
 }
 
-function RecipeCard({ recipe, onAddToList }: RecipeCardProps) {
+function RecipeCard({ recipe, onAddToList, onViewRecipe, isAddingToList }: RecipeCardProps) {
   return (
     <View style={styles.card}>
       <BlurView intensity={20} tint="light" style={styles.cardBlur} />
@@ -135,30 +333,36 @@ function RecipeCard({ recipe, onAddToList }: RecipeCardProps) {
         end={{ x: 1, y: 1 }}
         style={styles.imageHeader}
       >
-        <Text style={styles.recipeEmoji}>{recipe.emoji}</Text>
+        <Text style={styles.recipeEmoji}>{recipe.emoji || '\u{1F37D}'}</Text>
       </LinearGradient>
 
       {/* Recipe Content */}
       <View style={styles.cardContent}>
-        <Text style={styles.recipeTitle}>{recipe.title}</Text>
+        <Text style={styles.recipeTitle}>{recipe.name}</Text>
 
         {/* Meta info */}
         <View style={styles.recipeMeta}>
-          <Text style={styles.metaText}>{'\u{23F1}'} {recipe.time}</Text>
+          {recipe.total_time && (
+            <Text style={styles.metaText}>{'\u{23F1}'} {recipe.total_time}</Text>
+          )}
           <Text style={styles.metaText}>{'\u{1F465}'} {recipe.servings} servings</Text>
-          {recipe.byMira && (
+          {recipe.source === 'mira' && (
             <Text style={styles.metaText}>{'\u2726'} By Mira</Text>
           )}
         </View>
 
         {/* Action Buttons */}
         <View style={styles.actions}>
-          <Pressable style={styles.secondaryButton}>
+          <Pressable style={styles.secondaryButton} onPress={onViewRecipe}>
             <View style={styles.secondaryButtonBg} />
             <Text style={styles.secondaryButtonText}>View Recipe</Text>
           </Pressable>
 
-          <Pressable style={styles.primaryButton} onPress={onAddToList}>
+          <Pressable
+            style={[styles.primaryButton, isAddingToList && styles.primaryButtonDisabled]}
+            onPress={onAddToList}
+            disabled={isAddingToList}
+          >
             <LinearGradient
               colors={[COLORS.gold.light, COLORS.gold.base]}
               start={{ x: 0, y: 0 }}
@@ -166,10 +370,100 @@ function RecipeCard({ recipe, onAddToList }: RecipeCardProps) {
               style={styles.primaryButtonGradient}
             />
             <View style={styles.primaryButtonBorder} />
-            <Text style={styles.primaryButtonText}>Add to List</Text>
+            {isAddingToList ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Add to List</Text>
+            )}
           </Pressable>
         </View>
       </View>
+    </View>
+  );
+}
+
+interface RecipeDetailViewProps {
+  recipe: Recipe;
+  onClose: () => void;
+  onAddToList: () => void;
+}
+
+function RecipeDetailView({ recipe, onClose, onAddToList }: RecipeDetailViewProps) {
+  return (
+    <View style={styles.modalContainer}>
+      {/* Modal Header */}
+      <LinearGradient
+        colors={[COLORS.gold.light, COLORS.gold.base]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.modalHeader}
+      >
+        <Pressable style={styles.closeButton} onPress={onClose}>
+          <Text style={styles.closeButtonText}>{'\u2715'}</Text>
+        </Pressable>
+        <Text style={styles.modalEmoji}>{recipe.emoji || '\u{1F37D}'}</Text>
+        <Text style={styles.modalTitle}>{recipe.name}</Text>
+        <View style={styles.modalMeta}>
+          {recipe.total_time && (
+            <Text style={styles.modalMetaText}>{'\u{23F1}'} {recipe.total_time}</Text>
+          )}
+          <Text style={styles.modalMetaText}>{'\u{1F465}'} {recipe.servings} servings</Text>
+        </View>
+      </LinearGradient>
+
+      <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+        {/* Description */}
+        {recipe.description && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>About</Text>
+            <Text style={styles.descriptionText}>{recipe.description}</Text>
+          </View>
+        )}
+
+        {/* Ingredients */}
+        {recipe.ingredients && recipe.ingredients.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Ingredients</Text>
+            {recipe.ingredients.map((ingredient, index) => (
+              <View key={index} style={styles.ingredientRow}>
+                <Text style={styles.bulletPoint}>{'\u2022'}</Text>
+                <Text style={styles.ingredientText}>
+                  {ingredient.amount ? `${ingredient.amount} ` : ''}{ingredient.item}
+                  {ingredient.optional && <Text style={styles.optionalText}> (optional)</Text>}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Instructions */}
+        {recipe.instructions && recipe.instructions.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Instructions</Text>
+            {recipe.instructions.map((step, index) => (
+              <View key={index} style={styles.instructionRow}>
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.instructionText}>{step}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Add to List Button */}
+        <Pressable style={styles.modalAddButton} onPress={onAddToList}>
+          <LinearGradient
+            colors={[COLORS.gold.light, COLORS.gold.base]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.modalAddButtonGradient}
+          />
+          <Text style={styles.modalAddButtonText}>Add Ingredients to List</Text>
+        </Pressable>
+
+        <View style={styles.modalBottomSpacer} />
+      </ScrollView>
     </View>
   );
 }
@@ -234,7 +528,57 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: 120, // Extra padding for scroll
+    paddingBottom: 120,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 100,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyEmoji: {
+    fontSize: 64,
+    marginBottom: SPACING.md,
+  },
+  emptyTitle: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    marginBottom: SPACING.sm,
+  },
+  emptySubtitle: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+  emptyButton: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+  },
+  emptyButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  emptyButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.white,
   },
   sectionLabel: {
     fontSize: FONT_SIZES.xs,
@@ -319,8 +663,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md - 4,
     borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
     ...SHADOWS.goldGlow,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
   },
   primaryButtonGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -336,5 +684,137 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background.start,
+  },
+  modalHeader: {
+    paddingTop: 60,
+    paddingBottom: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: COLORS.white,
+    fontWeight: '600',
+  },
+  modalEmoji: {
+    fontSize: 64,
+    marginBottom: SPACING.sm,
+  },
+  modalTitle: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.title,
+    fontWeight: '600',
+    color: COLORS.white,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
+  modalMeta: {
+    flexDirection: 'row',
+    gap: SPACING.lg,
+  },
+  modalMetaText: {
+    fontSize: FONT_SIZES.md,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+  },
+  section: {
+    marginBottom: SPACING.xl,
+  },
+  sectionTitle: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    marginBottom: SPACING.md,
+  },
+  descriptionText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+    lineHeight: 24,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  bulletPoint: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gold.base,
+    marginRight: SPACING.sm,
+    marginTop: 2,
+  },
+  ingredientText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.primary,
+    lineHeight: 22,
+  },
+  optionalText: {
+    color: COLORS.text.secondary,
+    fontStyle: 'italic',
+  },
+  instructionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.md,
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.gold.base,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  stepNumberText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  instructionText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.primary,
+    lineHeight: 24,
+  },
+  modalAddButton: {
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+    overflow: 'hidden',
+    marginTop: SPACING.md,
+  },
+  modalAddButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  modalAddButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  modalBottomSpacer: {
+    height: 40,
   },
 });

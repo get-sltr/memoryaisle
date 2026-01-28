@@ -39,10 +39,13 @@ export interface UserProfile {
 export interface User {
   id: string;
   email: string;
+  phone?: string;
   name: string | null;
   household_id: string | null;
   allergies?: AllergenType[]; // User's personal allergies
   profile?: UserProfile; // Extended personal profile
+  phone_verified?: boolean; // Whether phone has been verified (2-step auth)
+  phone_verified_at?: string; // When phone was verified
   created_at: string;
 }
 
@@ -154,6 +157,8 @@ export interface FamilyMember {
   id: string;
   name: string;
   role?: 'parent' | 'child' | 'grandparent' | 'other';
+  allergies?: AllergenType[];
+  dietary_preferences?: string[];
   profile?: UserProfile;
 }
 
@@ -395,6 +400,34 @@ export interface MiraTripSuggestion {
   keyItems: string[];                 // Top 5 must-haves
   mealIdeas: string[];                // "Campfire s'mores", "Trail mix"
   estimatedBudget?: string;           // "$200-400"
+}
+
+// ==================== RECIPE TYPES ====================
+
+// Recipe ingredient
+export interface RecipeIngredient {
+  item: string;
+  amount: string;
+  optional?: boolean;
+}
+
+// Recipe stored in Supabase
+export interface Recipe {
+  id: string;
+  household_id: string;
+  name: string;
+  emoji: string;
+  description?: string;
+  prep_time?: string;
+  cook_time?: string;
+  total_time?: string;
+  servings: number;
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  source: 'manual' | 'mira';
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // Trip recipe (extends regular recipe concept)

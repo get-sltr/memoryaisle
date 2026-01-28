@@ -3,6 +3,37 @@ import * as Speech from 'expo-speech';
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 
+// Helper to read file as base64 using fetch (avoids expo-file-system deprecation)
+async function readFileAsBase64(uri: string): Promise<string> {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      // Remove data URL prefix (e.g., "data:audio/m4a;base64,")
+      const base64 = result.split(',')[1] || result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Helper to check if file exists using fetch
+async function checkFileExists(uri: string): Promise<{ exists: boolean; size?: number }> {
+  try {
+    const response = await fetch(uri, { method: 'HEAD' });
+    if (response.ok) {
+      const size = Number.parseInt(response.headers.get('content-length') || '0', 10);
+      return { exists: true, size };
+    }
+    return { exists: false };
+  } catch {
+    return { exists: false };
+  }
+}
+
 // Mira - MemoryAisle's AI Assistant
 // Full conversational AI with voice, memory, and personality
 
@@ -247,38 +278,58 @@ class MiraAssistant {
     speakerName?: string;
   }): Promise<MiraChatResponse> {
     if (!this.recording || !this.isRecording) {
+      logger.error('stopListening called but not recording');
       return {
         success: false,
         intent: 'error',
         items: [],
         response: 'Not recording',
-        error: 'Not recording',
+        error: 'Recording not started - tap mic to start',
       };
     }
 
     try {
       this.isRecording = false;
+      logger.info('Stopping recording...');
       await this.recording.stopAndUnloadAsync();
 
       const uri = this.recording.getURI();
+      logger.info('Recording URI:', uri);
       this.recording = null;
 
       if (!uri) {
+        logger.error('No URI from recording');
         return {
           success: false,
           intent: 'error',
           items: [],
           response: 'No audio recorded',
-          error: 'No audio recorded',
+          error: 'No audio file created',
+        };
+      }
+
+      // Check if file exists and has content
+      const fileInfo = await checkFileExists(uri);
+      logger.info('Audio file info:', fileInfo);
+
+      if (!fileInfo.exists) {
+        return {
+          success: false,
+          intent: 'error',
+          items: [],
+          response: 'Audio file not found',
+          error: 'Audio file does not exist',
         };
       }
 
       // Process with conversation context
+      logger.info('Sending to transcribe...');
       const result = await this.transcribeAndParse(uri, {
         ...context,
         conversationHistory: this.conversationHistory,
         speakerName: context?.speakerName || this.currentSpeaker || undefined,
       });
+      logger.info('Transcribe result:', result.success, result.error);
 
       // Add to history
       if (result.transcription) {
@@ -295,8 +346,8 @@ class MiraAssistant {
         success: false,
         intent: 'error',
         items: [],
-        response: getRandomResponse('error'),
-        error: error.message,
+        response: 'Voice processing failed',
+        error: `Stop recording error: ${error.message}`,
       };
     }
   }
@@ -341,21 +392,18 @@ class MiraAssistant {
     }
   ): Promise<MiraChatResponse> {
     try {
-      // Read file as base64
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      // Read file as base64 using fetch (avoids expo-file-system deprecation)
+      const base64 = await readFileAsBase64(uri);
 
-      // Convert blob to base64
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const base64Data = result.includes(',') ? result.split(',')[1] : result;
-          resolve(base64Data);
+      if (!base64 || base64.length === 0) {
+        return {
+          success: false,
+          intent: 'error',
+          items: [],
+          response: "I couldn't hear that. Please try again.",
+          error: 'Empty audio file',
         };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      }
 
       // Call Edge Function with full context
       const { data, error } = await supabase.functions.invoke('mira-transcribe', {
@@ -372,13 +420,23 @@ class MiraAssistant {
       });
 
       if (error) {
-        logger.error('Mira error:', error);
+        logger.error('Mira transcribe error:', error);
         return {
           success: false,
           intent: 'error',
           items: [],
-          response: getRandomResponse('error'),
-          error: error.message,
+          response: "I'm having trouble connecting. Please try again.",
+          error: `Edge function error: ${error.message}`,
+        };
+      }
+
+      if (!data) {
+        return {
+          success: false,
+          intent: 'error',
+          items: [],
+          response: "I didn't get a response. Please try again.",
+          error: 'No data returned from edge function',
         };
       }
 
@@ -390,13 +448,13 @@ class MiraAssistant {
         transcription: data.transcription,
       };
     } catch (error: any) {
-      logger.error('Mira error:', error);
+      logger.error('Mira transcribe error:', error);
       return {
         success: false,
         intent: 'error',
         items: [],
-        response: getRandomResponse('error'),
-        error: error.message,
+        response: "Something went wrong with voice processing.",
+        error: `Transcribe failed: ${error.message}`,
       };
     }
   }
@@ -574,20 +632,8 @@ class MiraAssistant {
         };
       }
 
-      // Read file as base64
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const base64Data = result.includes(',') ? result.split(',')[1] : result;
-          resolve(base64Data);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      // Read file as base64 using fetch (avoids expo-file-system deprecation)
+      const base64 = await readFileAsBase64(uri);
 
       // Call fast dictation Edge Function
       const { data, error } = await supabase.functions.invoke('mira-dictate', {

@@ -37,7 +37,7 @@ export default function AuthCallbackScreen() {
 
             if (error) {
               console.error('Failed to set session:', error);
-              router.replace('/(auth)/landing');
+              router.replace('/(auth)/sign-in');
               return;
             }
 
@@ -59,7 +59,7 @@ export default function AuthCallbackScreen() {
 
           if (error) {
             console.error('Failed to set session:', error);
-            router.replace('/(auth)/landing');
+            router.replace('/(auth)/sign-in');
             return;
           }
 
@@ -69,10 +69,10 @@ export default function AuthCallbackScreen() {
 
         // No valid tokens found, redirect to landing
         console.log('No tokens found in callback URL');
-        router.replace('/(auth)/landing');
+        router.replace('/(auth)/sign-in');
       } catch (error) {
         console.error('Auth callback error:', error);
-        router.replace('/(auth)/landing');
+        router.replace('/(auth)/sign-in');
       }
     };
 
@@ -91,6 +91,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background.primary,
+    backgroundColor: COLORS.background.start,
   },
 });

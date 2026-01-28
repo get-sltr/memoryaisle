@@ -20,6 +20,7 @@ import {
 } from '../../src/components/GlassIcons';
 import { PaywallBanner } from '../../src/components/PaywallPrompt';
 import { useAuthStore } from '../../src/stores/authStore';
+import { addItem, getActiveList } from '../../src/services/lists';
 import { useSubscription } from '../../src/hooks/useSubscription';
 import {
   getUpcomingHolidays,
@@ -107,7 +108,7 @@ export default function CalendarScreen() {
   }, [weeklyTraditions]);
 
   // Handle "Holiday Mode" - generate shopping list for event
-  const handleHolidayMode = (holiday: HolidayOccurrence) => {
+  const handleHolidayMode = async (holiday: HolidayOccurrence) => {
     // Check premium access
     if (!hasFullAccess) {
       Alert.alert(
@@ -136,26 +137,48 @@ export default function CalendarScreen() {
 
     // Show allergy-aware suggestions
     const userAllergies = user?.allergies || [];
-    const hasAllergyConflicts = items.some(item => {
-      // Simplified check - in production would use allergenDetection
-      return userAllergies.length > 0;
-    });
+    const hasAllergyConflicts = userAllergies.length > 0;
+
+    // Build preview list
+    const itemsPreview = items.map(item => `• ${item}`).join('\n');
 
     Alert.alert(
       `${holiday.icon} ${holiday.name} Shopping List`,
-      hasAllergyConflicts
-        ? `Create an allergy-safe list with ${items.length} suggested items?`
-        : `Add ${items.length} suggested items to your list?`,
+      `${hasAllergyConflicts ? 'Allergy-safe list:\n\n' : ''}${itemsPreview}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: hasAllergyConflicts ? 'Create Safe List' : 'Add to List',
-          onPress: () => {
-            Alert.alert(
-              'List Created!',
-              `Added ${items.length} items for ${holiday.name}. Mira made it allergy-safe for your family!`,
-              [{ text: 'View List', onPress: () => router.push('/') }]
-            );
+          onPress: async () => {
+            try {
+              // Get the active list for the household
+              if (!household?.id) {
+                Alert.alert('Error', 'No household found');
+                return;
+              }
+
+              const list = await getActiveList(household.id);
+              if (!list) {
+                Alert.alert('Error', 'Could not get or create shopping list');
+                return;
+              }
+
+              // Add each item to the list
+              let addedCount = 0;
+              for (const itemName of items) {
+                const result = await addItem(list.id, itemName, undefined, 1, 'ai_suggested');
+                if (result) addedCount++;
+              }
+
+              Alert.alert(
+                'List Created!',
+                `Added ${addedCount} items for ${holiday.name}. Mira made it allergy-safe for your family!`,
+                [{ text: 'View List', onPress: () => router.push('/') }]
+              );
+            } catch (error) {
+              console.error('Failed to add holiday items:', error);
+              Alert.alert('Error', 'Failed to add items to list');
+            }
           },
         },
       ]
@@ -163,7 +186,7 @@ export default function CalendarScreen() {
   };
 
   // Handle tradition shopping
-  const handleTraditionMode = (tradition: WeeklyTradition) => {
+  const handleTraditionMode = async (tradition: WeeklyTradition) => {
     // Check premium access
     if (!hasFullAccess) {
       Alert.alert(
@@ -178,19 +201,54 @@ export default function CalendarScreen() {
     }
 
     const items = tradition.usualItems || [];
+    if (items.length === 0) {
+      Alert.alert(
+        tradition.name,
+        'No items saved for this tradition yet.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Build preview list
+    const itemsPreview = items.map(item => `• ${item}`).join('\n');
+
     Alert.alert(
       `${tradition.icon} ${tradition.name}`,
-      `Add ${items.length} usual items to your shopping list?`,
+      itemsPreview,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Add Items',
-          onPress: () => {
-            Alert.alert(
-              'Items Added!',
-              `${tradition.name} items are ready! Mira checked for allergies.`,
-              [{ text: 'View List', onPress: () => router.push('/') }]
-            );
+          onPress: async () => {
+            try {
+              if (!household?.id) {
+                Alert.alert('Error', 'No household found');
+                return;
+              }
+
+              const list = await getActiveList(household.id);
+              if (!list) {
+                Alert.alert('Error', 'Could not get or create shopping list');
+                return;
+              }
+
+              // Add each item to the list
+              let addedCount = 0;
+              for (const itemName of items) {
+                const result = await addItem(list.id, itemName, undefined, 1, 'ai_suggested');
+                if (result) addedCount++;
+              }
+
+              Alert.alert(
+                'Items Added!',
+                `Added ${addedCount} ${tradition.name} items. Mira checked for allergies.`,
+                [{ text: 'View List', onPress: () => router.push('/') }]
+              );
+            } catch (error) {
+              console.error('Failed to add tradition items:', error);
+              Alert.alert('Error', 'Failed to add items to list');
+            }
           },
         },
       ]
