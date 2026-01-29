@@ -1,12 +1,14 @@
-// Apple In-App Purchases Service
-// Handles subscriptions via App Store
+// In-App Purchases Service
+// Handles subscriptions via App Store / Google Play
+// Note: expo-in-app-purchases was removed (deprecated, incompatible with SDK 54)
+// TODO: Replace with react-native-iap or react-native-purchases when ready
 
-let InAppPurchases: typeof import('expo-in-app-purchases') | null = null;
+let InAppPurchases: any = null;
 try {
   InAppPurchases = require('expo-in-app-purchases');
 } catch (e) {
-  // Native module not available (Expo Go)
-  console.log('IAP native module not available - running in Expo Go mode');
+  // Native module not available
+  console.log('IAP native module not available');
 }
 
 import { Platform } from 'react-native';
@@ -131,7 +133,7 @@ class IAPService {
     try {
       const { results } = await InAppPurchases.getProductsAsync(PRODUCT_IDS);
       if (results) {
-        this.products = results.map(product => ({
+        this.products = results.map((product: any) => ({
           productId: product.productId,
           title: product.title,
           description: product.description,
@@ -164,7 +166,7 @@ class IAPService {
       // Set up purchase listener
       const IAP = InAppPurchases!;
       IAP.setPurchaseListener(
-        async ({ responseCode, results, errorCode }) => {
+        async ({ responseCode, results, errorCode }: any) => {
           if (responseCode === IAP.IAPResponseCode.OK && results) {
             for (const purchase of results) {
               if (!purchase.acknowledged) {
@@ -254,7 +256,7 @@ class IAPService {
       if (results && results.length > 0) {
         // Find most recent valid subscription
         const validPurchase = results.find(
-          p => PRODUCT_IDS.includes(p.productId as typeof PRODUCT_IDS[number])
+          (p: any) => PRODUCT_IDS.includes(p.productId as typeof PRODUCT_IDS[number])
         );
 
         if (validPurchase) {
