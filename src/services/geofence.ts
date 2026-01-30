@@ -1,9 +1,9 @@
 // Geofence Service - Auto-surface list when arriving at a store
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabase';
 import { logger } from '../utils/logger';
+import type { StoreLocation } from '../types';
 
-const STORES_KEY = 'memoryaisle_saved_stores';
 const GEOFENCE_RADIUS = 100; // meters
 
 export interface SavedStore {
@@ -17,6 +17,17 @@ export interface SavedStore {
 type ArrivalCallback = (store: SavedStore) => void;
 type DepartureCallback = (store: SavedStore) => void;
 
+// Map a Supabase StoreLocation row to the local SavedStore shape
+function toSavedStore(row: StoreLocation): SavedStore {
+  return {
+    id: row.id,
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    address: row.address,
+  };
+}
+
 class GeofenceService {
   private subscription: Location.LocationSubscription | null = null;
   private savedStores: SavedStore[] = [];
@@ -24,6 +35,7 @@ class GeofenceService {
   private onDeparture: DepartureCallback | null = null;
   private currentStoreId: string | null = null;
   private isMonitoring = false;
+  private householdId: string | null = null;
 
   // Calculate distance between two coordinates (Haversine formula)
   private getDistance(
@@ -46,11 +58,17 @@ class GeofenceService {
     return R * c;
   }
 
-  // Load saved stores from storage
-  async loadStores(): Promise<SavedStore[]> {
+  // Load saved stores from Supabase
+  async loadStores(householdId: string): Promise<SavedStore[]> {
     try {
-      const data = await AsyncStorage.getItem(STORES_KEY);
-      this.savedStores = data ? JSON.parse(data) : [];
+      const { data, error } = await supabase
+        .from('store_locations')
+        .select('*')
+        .eq('household_id', householdId);
+
+      if (error) throw error;
+
+      this.savedStores = (data as StoreLocation[]).map(toSavedStore);
       return this.savedStores;
     } catch (error) {
       logger.error('Failed to load stores:', error);
@@ -58,19 +76,41 @@ class GeofenceService {
     }
   }
 
-  // Save a new store location
-  async saveStore(store: Omit<SavedStore, 'id'>): Promise<SavedStore> {
-    const newStore: SavedStore = {
-      ...store,
-      id: Date.now().toString(),
-    };
-    this.savedStores.push(newStore);
-    await AsyncStorage.setItem(STORES_KEY, JSON.stringify(this.savedStores));
-    return newStore;
+  // Save a new store location to Supabase
+  async saveStore(
+    householdId: string,
+    store: Omit<SavedStore, 'id'>
+  ): Promise<SavedStore | null> {
+    try {
+      const { data, error } = await supabase
+        .from('store_locations')
+        .insert({
+          household_id: householdId,
+          name: store.name,
+          latitude: store.latitude,
+          longitude: store.longitude,
+          address: store.address || null,
+          geofence_radius_meters: GEOFENCE_RADIUS,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const saved = toSavedStore(data as StoreLocation);
+      this.savedStores.push(saved);
+      return saved;
+    } catch (error) {
+      logger.error('Failed to save store:', error);
+      return null;
+    }
   }
 
   // Save current location as a store
-  async saveCurrentLocationAsStore(name: string): Promise<SavedStore | null> {
+  async saveCurrentLocationAsStore(
+    householdId: string,
+    name: string
+  ): Promise<SavedStore | null> {
     try {
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
@@ -86,7 +126,7 @@ class GeofenceService {
         ? `${address.street || ''} ${address.city || ''}`.trim()
         : undefined;
 
-      return this.saveStore({
+      return this.saveStore(householdId, {
         name,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
@@ -98,14 +138,25 @@ class GeofenceService {
     }
   }
 
-  // Remove a saved store
+  // Remove a saved store from Supabase
   async removeStore(storeId: string): Promise<void> {
-    this.savedStores = this.savedStores.filter((s) => s.id !== storeId);
-    await AsyncStorage.setItem(STORES_KEY, JSON.stringify(this.savedStores));
+    try {
+      const { error } = await supabase
+        .from('store_locations')
+        .delete()
+        .eq('id', storeId);
+
+      if (error) throw error;
+
+      this.savedStores = this.savedStores.filter((s) => s.id !== storeId);
+    } catch (error) {
+      logger.error('Failed to remove store:', error);
+    }
   }
 
   // Start monitoring location for store arrivals and departures
   async startMonitoring(
+    householdId: string,
     onArrival: ArrivalCallback,
     onDeparture?: DepartureCallback
   ): Promise<boolean> {
@@ -118,7 +169,8 @@ class GeofenceService {
         return false;
       }
 
-      await this.loadStores();
+      this.householdId = householdId;
+      await this.loadStores(householdId);
       this.onArrival = onArrival;
       this.onDeparture = onDeparture || null;
 
@@ -196,6 +248,7 @@ class GeofenceService {
     }
     this.isMonitoring = false;
     this.onArrival = null;
+    this.householdId = null;
     logger.log('Geofence monitoring stopped');
   }
 

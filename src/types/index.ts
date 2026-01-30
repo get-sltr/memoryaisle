@@ -13,6 +13,17 @@ export type AllergenType =
   | 'soy'
   | 'sesame';
 
+// Dietary preference types for household-level settings
+export type DietaryPreference =
+  | 'halal'
+  | 'kosher'
+  | 'vegetarian'
+  | 'vegan'
+  | 'keto'
+  | 'gluten-free'
+  | 'dairy-free'
+  | 'nut-free';
+
 // Personal profile - what makes each person unique
 export interface UserProfile {
   // Basics
@@ -88,6 +99,9 @@ export interface FamilyProfile {
   familyName?: string;
   familyMotto?: string; // "The Smiths: Always Hungry, Always Happy"
 
+  // Onboarding completion flag
+  dietarySetupCompleted?: boolean;
+
   // Cultural & Religious preferences (for calendar)
   culturalPreferences?: CulturalPreference[];
   observeSecularHolidays?: boolean;  // US holidays, Halloween, etc.
@@ -137,6 +151,18 @@ export interface CalendarEvent {
   isRecurring: boolean;
 }
 
+export interface StoreLocation {
+  id: string;
+  household_id: string;
+  name: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  place_id?: string;
+  geofence_radius_meters: number;
+  created_at: string;
+}
+
 import type { ImageSourcePropType } from 'react-native';
 
 // Mira's smart suggestion based on calendar
@@ -168,7 +194,9 @@ export interface Household {
   created_by: string;
   invite_code: string;
   member_count?: number; // Number of people in household (user-selected during signup)
-  familyProfile?: FamilyProfile; // Extended family profile
+  dietary_preferences?: string[]; // Household-level dietary preferences (halal, kosher, etc.)
+  cultural_preferences?: string[]; // Cultural/religious calendar preferences
+  familyProfile?: FamilyProfile; // Extended family profile (stored as family_profile JSONB)
   members?: FamilyMember[];
   created_at: string;
 }

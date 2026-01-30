@@ -90,6 +90,7 @@ import {
   type GroceryCategory,
 } from '../../src/utils/categoryDetection';
 import type { ListItem, GroceryList as GroceryListType } from '../../src/types';
+import { notificationService } from '../../src/services/notifications';
 import { logger } from '../../src/utils/logger';
 
 export default function MainList() {
@@ -198,12 +199,16 @@ export default function MainList() {
 
   // Geofence monitoring
   useEffect(() => {
+    if (!household?.id) return;
+
     const startGeofence = async () => {
       await geofenceService.startMonitoring(
+        household.id,
         (store) => {
           setArrivedStore(store);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Notifications.scheduleNotificationAsync({ content: { title: "You're at " + store.name, body: "Your shopping list is ready!", sound: true }, trigger: null });
+          notificationService.notifyStoreNearby(store.name, items.length);
           mira.speak(`You're at ${store.name}. Here's your list!`);
           setTimeout(() => setArrivedStore(null), 10000);
         },
@@ -219,7 +224,7 @@ export default function MainList() {
 
     startGeofence();
     return () => geofenceService.stopMonitoring();
-  }, [items.length]);
+  }, [household?.id, items.length]);
 
   // Cleanup Mira on unmount
   useEffect(() => {
@@ -979,8 +984,8 @@ export default function MainList() {
               <Pressable
                 style={[styles.shareButton, !storeNameInput.trim() && styles.buttonDisabled]}
                 onPress={async () => {
-                  if (!storeNameInput.trim()) return;
-                  const store = await geofenceService.saveCurrentLocationAsStore(storeNameInput.trim());
+                  if (!storeNameInput.trim() || !household?.id) return;
+                  const store = await geofenceService.saveCurrentLocationAsStore(household.id, storeNameInput.trim());
                   if (store) {
                     setShowSaveStore(false);
                     setStoreNameInput('');
