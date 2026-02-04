@@ -15,7 +15,6 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { SubscriptionModal } from '../../src/components/SubscriptionModal';
 import { useSubscription } from '../../src/hooks/useSubscription';
@@ -100,19 +99,49 @@ export default function SettingsScreen() {
   const [saveMiraHistory, setSaveMiraHistory] = useState(true);
   const [isClearingHistory, setIsClearingHistory] = useState(false);
 
-  // Load Mira history preference
+  // Load Mira history preference from Supabase
   useEffect(() => {
-    AsyncStorage.getItem('mira_save_history').then((value) => {
-      if (value !== null) {
-        setSaveMiraHistory(value === 'true');
-      }
-    });
-  }, []);
+    if (!user?.id) return;
 
-  // Handle Mira history toggle
+    const loadMiraPreference = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('profile')
+        .eq('id', user.id)
+        .single();
+
+      if (data?.profile?.save_mira_history !== undefined) {
+        setSaveMiraHistory(data.profile.save_mira_history);
+      }
+    };
+
+    loadMiraPreference();
+  }, [user?.id]);
+
+  // Handle Mira history toggle - save to Supabase
   const handleMiraHistoryToggle = async (value: boolean) => {
+    if (!user?.id) return;
+
     setSaveMiraHistory(value);
-    await AsyncStorage.setItem('mira_save_history', value.toString());
+
+    // Get current profile and merge with new setting
+    const { data: userData } = await supabase
+      .from('users')
+      .select('profile')
+      .eq('id', user.id)
+      .single();
+
+    const currentProfile = userData?.profile || {};
+
+    await supabase
+      .from('users')
+      .update({
+        profile: {
+          ...currentProfile,
+          save_mira_history: value,
+        },
+      })
+      .eq('id', user.id);
   };
 
   // Clear Mira conversation history
