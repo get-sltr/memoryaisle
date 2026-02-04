@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,7 +19,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS, HIG } from '../constants/theme';
 import {
   SUBSCRIPTION_TIERS,
-  BillingInterval,
   FeatureKey,
 } from '../services/iap';
 import { useSubscription } from '../hooks/useSubscription';
@@ -33,7 +33,7 @@ const PREMIUM_FEATURES = [
   { icon: '✨', title: 'Unlimited Mira AI', description: 'Ask Mira anything, anytime' },
   { icon: '📋', title: 'Meal Planning', description: 'Generate weekly meal plans with macros' },
   { icon: '🧾', title: 'Receipt Scanning', description: 'Scan receipts to track purchases' },
-  { icon: '👨‍👩‍👧‍👦', title: '12 Family Members', description: 'Share lists with the whole family' },
+  { icon: '👨‍👩‍👧‍👦', title: '7 Family Members', description: 'Share lists with the whole family' },
   { icon: '📝', title: 'Unlimited Lists', description: 'Create as many lists as you need' },
   { icon: '✈️', title: 'Trip Planning', description: 'Plan trips with smart checklists' },
   { icon: '📅', title: 'Smart Calendar', description: 'Traditions & holiday planning' },
@@ -46,17 +46,16 @@ export function SubscriptionModal({
   highlightFeature,
 }: SubscriptionModalProps) {
   const insets = useSafeAreaInsets();
-  const { subscription, isPremium, purchaseMonthly, purchaseYearly, restorePurchases } = useSubscription();
-  const [selectedInterval, setSelectedInterval] = useState<BillingInterval>('year');
+  const { subscription, isPremium, purchaseYearly, restorePurchases } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+
+  const yearlyPrice = SUBSCRIPTION_TIERS.premium.price.yearly;
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const success = selectedInterval === 'year'
-        ? await purchaseYearly()
-        : await purchaseMonthly();
+      const success = await purchaseYearly();
 
       if (success) {
         Alert.alert(
@@ -149,49 +148,15 @@ export function SubscriptionModal({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* Pricing Options - Two Clear Cards */}
-            <Text style={styles.choosePlanText}>Choose your plan:</Text>
-
-            <View style={styles.pricingCards}>
-              {/* Monthly Card */}
-              <Pressable
-                style={[
-                  styles.pricingCard,
-                  selectedInterval === 'month' && styles.pricingCardActive,
-                ]}
-                onPress={() => setSelectedInterval('month')}
-              >
-                <View style={styles.radioOuter}>
-                  {selectedInterval === 'month' && <View style={styles.radioInner} />}
-                </View>
-                <View style={styles.pricingCardContent}>
-                  <Text style={styles.planName}>Monthly</Text>
-                  <Text style={styles.planPrice}>$9.99</Text>
-                  <Text style={styles.planPeriod}>per month</Text>
-                </View>
-              </Pressable>
-
-              {/* Yearly Card */}
-              <Pressable
-                style={[
-                  styles.pricingCard,
-                  selectedInterval === 'year' && styles.pricingCardActive,
-                ]}
-                onPress={() => setSelectedInterval('year')}
-              >
-                <View style={styles.savingsBadge}>
-                  <Text style={styles.savingsText}>BEST VALUE</Text>
-                </View>
-                <View style={styles.radioOuter}>
-                  {selectedInterval === 'year' && <View style={styles.radioInner} />}
-                </View>
-                <View style={styles.pricingCardContent}>
-                  <Text style={styles.planName}>Yearly</Text>
-                  <Text style={styles.planPrice}>$47.88</Text>
-                  <Text style={styles.planPeriod}>per year</Text>
-                  <Text style={styles.planSavings}>Save 60% ($3.99/mo)</Text>
-                </View>
-              </Pressable>
+            {/* Subscription Info */}
+            <View style={styles.subscriptionInfoCard}>
+              <Text style={styles.subscriptionName}>MemoryAisle Premium</Text>
+              <View style={styles.priceRow}>
+                <Text style={styles.planPrice}>${yearlyPrice.toFixed(2)}</Text>
+                <Text style={styles.planPeriod}>/year</Text>
+              </View>
+              <Text style={styles.subscriptionType}>Yearly auto-renewable subscription</Text>
+              <Text style={styles.planSavings}>Just $3.99/month</Text>
             </View>
 
             {/* Features */}
@@ -224,9 +189,7 @@ export function SubscriptionModal({
                 <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.ctaText}>
-                  {selectedInterval === 'year'
-                    ? 'Start Premium - $47.88/year'
-                    : 'Start Premium - $9.99/month'}
+                  Subscribe Now - ${yearlyPrice.toFixed(2)}/year
                 </Text>
               )}
             </Pressable>
@@ -245,7 +208,10 @@ export function SubscriptionModal({
             </Pressable>
 
             <Text style={styles.termsText}>
-              Payment will be charged to your Apple ID account. Subscription automatically renews unless canceled at least 24 hours before the end of the current period.
+              Payment will be charged to your Apple ID. Subscription automatically renews at ${yearlyPrice.toFixed(2)}/year unless canceled at least 24 hours before the end of the current period.{'\n\n'}
+              <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/terms')}>Terms of Use</Text>
+              {'  •  '}
+              <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}>Privacy Policy</Text>
             </Text>
           </View>
         </View>
@@ -305,83 +271,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
 
-  // Plan selection
-  choosePlanText: {
+  // Subscription Info
+  subscriptionInfoCard: {
+    backgroundColor: 'rgba(212, 165, 71, 0.1)',
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING.xl,
+    borderWidth: 2,
+    borderColor: COLORS.gold.base,
+    alignItems: 'center',
+  },
+  subscriptionName: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.md,
+    color: COLORS.gold.dark,
+    marginBottom: SPACING.sm,
   },
-  pricingCards: {
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
-  pricingCard: {
+  priceRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: 'rgba(0, 0, 0, 0.03)',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  pricingCardActive: {
-    backgroundColor: 'rgba(212, 165, 71, 0.1)',
-    borderColor: COLORS.gold.base,
-  },
-  radioOuter: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.gold.base,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  radioInner: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: COLORS.gold.base,
-  },
-  pricingCardContent: {
-    flex: 1,
-  },
-  planName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text.secondary,
+    alignItems: 'baseline',
   },
   planPrice: {
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: '800',
     color: COLORS.text.primary,
-    marginTop: 2,
   },
   planPeriod: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.text.secondary,
+    marginLeft: 4,
+  },
+  subscriptionType: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text.secondary,
+    marginTop: SPACING.xs,
   },
   planSavings: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.success,
-    marginTop: 4,
-  },
-  savingsBadge: {
-    position: 'absolute',
-    top: -10,
-    right: SPACING.md,
-    backgroundColor: COLORS.success,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  savingsText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
-    color: COLORS.white,
+    marginTop: SPACING.xs,
   },
 
   // Features
@@ -448,6 +377,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: SPACING.sm,
     lineHeight: 16,
+  },
+  termsLink: {
+    color: COLORS.gold.dark,
+    textDecorationLine: 'underline',
   },
   restoreButton: {
     paddingVertical: SPACING.md,

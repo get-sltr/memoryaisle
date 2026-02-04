@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,21 +8,20 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
-  TextInput,
-  Share,
+  AppState,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { SubscriptionModal } from '../../src/components/SubscriptionModal';
 import { useSubscription } from '../../src/hooks/useSubscription';
 import { useAuthStore } from '../../src/stores/authStore';
 import { signOut } from '../../src/services/auth';
 import { adminService } from '../../src/services/admin';
-import { founderFamilyService } from '../../src/services/founderFamily';
 import { useThemeStore } from '../../src/stores/themeStore';
+import { supabase } from '../../src/services/supabase';
 import {
   COLORS,
   FONT_SIZES,
@@ -94,109 +93,102 @@ export default function SettingsScreen() {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isFounder, setIsFounder] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+
+  // Check notification permission status
+  const checkNotificationStatus = useCallback(async () => {
+    const { status } = await Notifications.getPermissionsAsync();
+    setNotificationStatus(status);
+  }, []);
 
   useEffect(() => {
     adminService.isAdmin().then(setIsAdmin);
-    adminService.isFounder().then(setIsFounder);
-  }, []);
+    checkNotificationStatus();
 
-  // Redeem gift code
-  const handleRedeemCode = () => {
-    Alert.prompt(
-      'Redeem Gift Code',
-      'Enter your gift code to unlock Premium features:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Redeem',
-          onPress: async (code: string | undefined) => {
-            if (!code?.trim()) return;
-            const result = await founderFamilyService.redeemCode(code);
-            if (result.success) {
-              Alert.alert('Success!', 'Welcome to the MemoryAisle family! You now have Premium access forever.');
-              refresh(); // Refresh subscription status
-            } else {
-              Alert.alert('Invalid Code', result.error || 'This code is invalid or has already been used.');
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
+    // Re-check notification status when app returns from background (user might have changed settings)
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        checkNotificationStatus();
+      }
+    });
 
-  // Generate family code (founder only)
-  const handleGenerateFamilyCode = () => {
-    Alert.prompt(
-      'Generate Family Code',
-      'Enter a label for this code (e.g., "Mom", "Sister"):\n\nThis code will give someone free Premium forever.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Generate',
-          onPress: async (label: string | undefined) => {
-            const code = await founderFamilyService.generateCode(label || undefined);
-            if (code) {
-              Alert.alert(
-                'Code Generated!',
-                `Share this code with your family:\n\n${code}\n\nThey can redeem it in Settings > Redeem Gift Code`,
-                [
-                  { text: 'Copy Code', onPress: () => Clipboard.setStringAsync(code) },
-                  {
-                    text: 'Share',
-                    onPress: () => Share.share({
-                      message: `Download MemoryAisle and use this gift code for free Premium:\n\n${code}\n\nApp Store: https://apps.apple.com/app/memoryaisle`,
-                    }),
-                  },
-                ]
-              );
-            } else {
-              Alert.alert('Error', 'Failed to generate code. Please try again.');
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
+    return () => subscription.remove();
+  }, [checkNotificationStatus]);
 
-  // View all family codes (founder only)
-  const handleViewFamilyCodes = async () => {
-    const codes = await founderFamilyService.getCodes();
-
-    if (codes.length === 0) {
-      Alert.alert('No Codes Yet', 'You haven\'t generated any family codes yet.\n\nTap "Generate Family Code" to create one!');
-      return;
-    }
-
-    const codeList = codes.map(c => {
-      const status = c.redeemed_by
-        ? `✅ Used by ${c.redeemed_by_email || 'someone'}`
-        : '⏳ Available';
-      const label = c.label ? ` (${c.label})` : '';
-      return `${c.code}${label}\n   ${status}`;
-    }).join('\n\n');
-
+  // Delete account handler
+  const handleDeleteAccount = () => {
     Alert.alert(
-      `Your Family Codes (${codes.length})`,
-      codeList,
+      'Delete Account',
+      'This will permanently delete your account and all associated data including your family profiles, grocery lists, meal plans, and Mira conversation history. This action cannot be undone.',
       [
-        { text: 'OK' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Copy All Available',
+          text: 'Continue',
+          style: 'destructive',
           onPress: () => {
-            const available = codes
-              .filter(c => !c.redeemed_by)
-              .map(c => c.code)
-              .join('\n');
-            if (available) {
-              Clipboard.setStringAsync(available);
-              Alert.alert('Copied!', 'Available codes copied to clipboard.');
-            } else {
-              Alert.alert('No Available Codes', 'All your codes have been redeemed.');
-            }
-          }
+            Alert.prompt(
+              'Confirm Deletion',
+              'Type DELETE to confirm account deletion:',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete Forever',
+                  style: 'destructive',
+                  onPress: async (text: string | undefined) => {
+                    if (text?.toUpperCase() !== 'DELETE') {
+                      Alert.alert('Cancelled', 'Account deletion cancelled. You typed: ' + (text || 'nothing'));
+                      return;
+                    }
+
+                    setIsDeletingAccount(true);
+                    try {
+                      // Delete all user data from Supabase
+                      const userId = user?.id;
+                      if (!userId) throw new Error('No user ID');
+
+                      // Delete in order of dependencies
+                      await supabase.from('list_items').delete().eq('list_id',
+                        supabase.from('grocery_lists').select('id').eq('user_id', userId)
+                      );
+                      await supabase.from('grocery_lists').delete().eq('user_id', userId);
+                      await supabase.from('mira_conversations').delete().eq('user_id', userId);
+                      await supabase.from('meal_plans').delete().eq('user_id', userId);
+                      await supabase.from('recipes').delete().eq('user_id', userId);
+                      await supabase.from('household_members').delete().eq('household_id',
+                        supabase.from('households').select('id').eq('owner_id', userId)
+                      );
+                      await supabase.from('households').delete().eq('owner_id', userId);
+                      await supabase.from('receipts').delete().eq('user_id', userId);
+                      await supabase.from('purchase_history').delete().eq('user_id', userId);
+                      await supabase.from('favorites').delete().eq('user_id', userId);
+                      await supabase.from('store_locations').delete().eq('user_id', userId);
+                      await supabase.from('usage_tracking').delete().eq('user_id', userId);
+                      await supabase.from('subscriptions').delete().eq('user_id', userId);
+                      await supabase.from('user_preferences').delete().eq('user_id', userId);
+                      await supabase.from('users').delete().eq('id', userId);
+
+                      // Sign out and clear local state
+                      await signOut();
+                      clearAuthStore();
+
+                      Alert.alert(
+                        'Account Deleted',
+                        'Your account and all associated data have been permanently deleted.',
+                        [{ text: 'OK', onPress: () => router.replace('/(auth)/landing') }]
+                      );
+                    } catch (error) {
+                      console.error('Account deletion error:', error);
+                      Alert.alert('Error', 'Failed to delete account. Please contact support@memoryaisle.app');
+                    } finally {
+                      setIsDeletingAccount(false);
+                    }
+                  },
+                },
+              ],
+              'plain-text'
+            );
+          },
         },
       ]
     );
@@ -216,18 +208,51 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleNotifications = () => {
-    Alert.alert(
-      'Notifications',
-      'Manage notification settings in your device settings.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open Settings',
-          onPress: () => Linking.openURL('app-settings:'),
-        },
-      ]
-    );
+  const handleNotifications = async () => {
+    if (notificationStatus === 'granted') {
+      Alert.alert(
+        'Notifications Enabled',
+        'Push notifications are enabled. You can manage notification preferences in your device settings.',
+        [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => Linking.openURL('app-settings:'),
+          },
+        ]
+      );
+    } else if (notificationStatus === 'denied') {
+      Alert.alert(
+        'Notifications Disabled',
+        'Push notifications are currently disabled. Enable them in Settings to receive updates about shared lists, family activity, and store reminders.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => Linking.openURL('app-settings:'),
+          },
+        ]
+      );
+    } else {
+      // undetermined - request permission
+      const { status } = await Notifications.requestPermissionsAsync();
+      setNotificationStatus(status);
+      if (status === 'granted') {
+        Alert.alert('Success', 'Push notifications have been enabled!');
+      } else {
+        Alert.alert(
+          'Notifications Denied',
+          'You can enable notifications later in your device settings.',
+          [
+            { text: 'OK', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openURL('app-settings:'),
+            },
+          ]
+        );
+      }
+    }
   };
 
   const handleManageSubscription = async () => {
@@ -383,8 +408,8 @@ export default function SettingsScreen() {
                     Unlimited Mira AI, meal plans, receipt scanning & more
                   </Text>
                   <View style={styles.upgradePricing}>
-                    <Text style={styles.upgradePrice}>3-day free trial</Text>
-                    <Text style={styles.upgradeSavings}>then $47.88/yr or $9.99/mo</Text>
+                    <Text style={styles.upgradePrice}>$47.88/year</Text>
+                    <Text style={styles.upgradeSavings}>Just $3.99/month</Text>
                   </View>
                 </View>
                 <View style={styles.upgradeArrow}>
@@ -426,6 +451,13 @@ export default function SettingsScreen() {
             subtitle="Monitor prices & get deal alerts"
             onPress={() => router.push('/(app)/prices')}
           />
+          <SettingRow
+            icon="🗑️"
+            title="Delete Account"
+            subtitle="Permanently delete your account and data"
+            onPress={handleDeleteAccount}
+            danger
+          />
         </SectionCard>
 
         {/* App Section */}
@@ -433,7 +465,13 @@ export default function SettingsScreen() {
           <SettingRow
             icon="🔔"
             title="Notifications"
-            subtitle="Manage push notifications"
+            subtitle={
+              notificationStatus === 'granted'
+                ? 'Enabled'
+                : notificationStatus === 'denied'
+                ? 'Disabled - tap to enable'
+                : 'Tap to enable'
+            }
             onPress={handleNotifications}
           />
           <SettingRow
@@ -442,32 +480,6 @@ export default function SettingsScreen() {
             subtitle={isDark ? 'Dark mode' : 'Light mode'}
             onPress={handleAppearance}
           />
-        </SectionCard>
-
-        {/* Gift Codes Section */}
-        <SectionCard title="Gift Codes" icon="🎁">
-          <SettingRow
-            icon="🎟️"
-            title="Redeem Gift Code"
-            subtitle="Have a code? Get free Premium!"
-            onPress={handleRedeemCode}
-          />
-          {isFounder && (
-            <>
-              <SettingRow
-                icon="💝"
-                title="Generate Family Code"
-                subtitle="Give free Premium to family"
-                onPress={handleGenerateFamilyCode}
-              />
-              <SettingRow
-                icon="📋"
-                title="View My Codes"
-                subtitle="See all codes & who used them"
-                onPress={handleViewFamilyCodes}
-              />
-            </>
-          )}
         </SectionCard>
 
         {/* Support Section */}
@@ -505,13 +517,13 @@ export default function SettingsScreen() {
         <SectionCard title="Legal" icon="📄">
           <SettingRow
             icon="📜"
-            title="Terms of Service"
-            onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
+            title="Terms of Use"
+            onPress={() => router.push('/(app)/terms')}
           />
           <SettingRow
             icon="🔒"
             title="Privacy Policy"
-            onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}
+            onPress={() => router.push('/(app)/privacy')}
           />
           <SettingRow
             icon="📧"

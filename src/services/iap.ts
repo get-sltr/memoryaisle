@@ -17,12 +17,10 @@ import { logger } from '../utils/logger';
 
 // Product IDs - must match App Store Connect
 export const IAP_PRODUCTS = {
-  PREMIUM_MONTHLY: 'com.memoryaisle.premium.monthly',
   PREMIUM_YEARLY: 'com.memoryaisle.premium.yearly',
 } as const;
 
 export const PRODUCT_IDS = [
-  IAP_PRODUCTS.PREMIUM_MONTHLY,
   IAP_PRODUCTS.PREMIUM_YEARLY,
 ];
 
@@ -38,7 +36,7 @@ export const SUBSCRIPTION_TIERS = {
       miraQueriesPerDay: 10,
       recipesPerDay: 3,
       mealPlans: false,
-      familyMembers: 2,
+      familyMembers: 1,
       voiceCommands: true,
       receiptScanning: false,
       tripPlanning: false,
@@ -59,7 +57,7 @@ export const SUBSCRIPTION_TIERS = {
       miraQueriesPerDay: -1,
       recipesPerDay: -1,
       mealPlans: true,
-      familyMembers: 12,
+      familyMembers: 7,
       voiceCommands: true,
       receiptScanning: true,
       tripPlanning: true,
@@ -78,7 +76,7 @@ export type BillingInterval = 'month' | 'year';
 
 export interface SubscriptionInfo {
   tier: SubscriptionTier;
-  status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'none';
+  status: 'active' | 'canceled' | 'past_due' | 'none';
   billingInterval?: BillingInterval;
   currentPeriodEnd?: string;
   cancelAtPeriodEnd?: boolean;
@@ -200,17 +198,12 @@ class IAPService {
     purchase: any
   ): Promise<boolean> {
     try {
-      // Determine billing interval from product ID
-      const isYearly = purchase.productId === IAP_PRODUCTS.PREMIUM_YEARLY;
-      const billingInterval: BillingInterval = isYearly ? 'year' : 'month';
+      // Only yearly subscription is available
+      const billingInterval: BillingInterval = 'year';
 
       // Calculate period end (approximate - Apple doesn't provide exact date)
       const periodEnd = new Date();
-      if (isYearly) {
-        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-      } else {
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
-      }
+      periodEnd.setFullYear(periodEnd.getFullYear() + 1);
 
       // Save to database
       // Note: iOS transaction properties are accessed via `any` since expo-in-app-purchases types don't expose them all
@@ -302,7 +295,7 @@ class IAPService {
 
   // Check if user has access to a feature
   canAccessFeature(subscription: SubscriptionInfo, feature: FeatureKey): boolean {
-    const isActive = subscription.status === 'active' || subscription.status === 'trialing';
+    const isActive = subscription.status === 'active';
     const tier = isActive ? subscription.tier : 'free';
     const value = SUBSCRIPTION_TIERS[tier].features[feature];
 
@@ -313,7 +306,7 @@ class IAPService {
 
   // Get feature limit
   getFeatureLimit(subscription: SubscriptionInfo, feature: FeatureKey): number {
-    const isActive = subscription.status === 'active' || subscription.status === 'trialing';
+    const isActive = subscription.status === 'active';
     const tier = isActive ? subscription.tier : 'free';
     const value = SUBSCRIPTION_TIERS[tier].features[feature];
     return typeof value === 'number' ? value : (value ? -1 : 0);
@@ -323,7 +316,7 @@ class IAPService {
   isPremium(subscription: SubscriptionInfo): boolean {
     return (
       subscription.tier === 'premium' &&
-      (subscription.status === 'active' || subscription.status === 'trialing')
+      subscription.status === 'active'
     );
   }
 

@@ -18,21 +18,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../src/constants/theme';
 import { useSubscription } from '../../src/hooks/useSubscription';
-import { BillingInterval, SUBSCRIPTION_TIERS } from '../../src/services/iap';
+import { SUBSCRIPTION_TIERS } from '../../src/services/iap';
 import { useThemeStore } from '../../src/stores/themeStore';
 
 const PREMIUM_FEATURES = [
   { icon: '✨', title: 'Unlimited Mira AI', desc: 'Ask Mira anything, anytime - no daily limits' },
   { icon: '📋', title: 'Meal Planning', desc: 'Generate weekly meal plans with macros & nutrition' },
   { icon: '🧾', title: 'Receipt Scanning', desc: 'Scan receipts to auto-track purchases & prices' },
-  { icon: '👨‍👩‍👧‍👦', title: '12 Family Members', desc: 'Share lists with your entire household' },
+  { icon: '👨‍👩‍👧‍👦', title: '7 Family Members', desc: 'Share lists with your entire household' },
   { icon: '📝', title: 'Unlimited Lists', desc: 'Create unlimited shopping lists' },
   { icon: '📦', title: 'Unlimited Items', desc: 'No limit on items per list' },
   { icon: '✈️', title: 'Trip Planning', desc: 'Smart packing & travel checklists' },
   { icon: '📅', title: 'Smart Calendar', desc: 'Traditions, holidays & event planning' },
   { icon: '💳', title: 'Loyalty Cards', desc: 'Store all your rewards & membership cards' },
   { icon: '🎁', title: 'Gift Card Wallet', desc: 'Track gift card balances' },
-  { icon: '🏷️', title: 'Promo Codes', desc: 'Save & organize promo codes' },
+  { icon: '🏷️', title: 'Deal Alerts', desc: 'Get notified of sales at your stores' },
   { icon: '📊', title: 'Price Tracking', desc: 'Get notified when prices drop' },
   { icon: '📜', title: 'Order History', desc: 'Track all your shopping history' },
   { icon: '🍽️', title: 'Recipe Generation', desc: 'Unlimited AI recipe creation' },
@@ -47,22 +47,15 @@ export default function UpgradePage() {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeStore();
   const router = useRouter();
-  const { isPremium, purchaseMonthly, purchaseYearly, restorePurchases } = useSubscription();
-  const [selectedInterval, setSelectedInterval] = useState<BillingInterval>('year');
+  const { isPremium, purchaseYearly, restorePurchases } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Calculate savings
-  const monthlyTotal = SUBSCRIPTION_TIERS.premium.price.monthly * 12;
   const yearlyPrice = SUBSCRIPTION_TIERS.premium.price.yearly;
-  const savingsAmount = monthlyTotal - yearlyPrice;
-  const savingsPercentage = Math.round((savingsAmount / monthlyTotal) * 100);
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const success = selectedInterval === 'year'
-        ? await purchaseYearly()
-        : await purchaseMonthly();
+      const success = await purchaseYearly();
 
       if (success) {
         Alert.alert(
@@ -159,59 +152,16 @@ export default function UpgradePage() {
           </Text>
         </View>
 
-        {/* Pricing Cards */}
-        <Text style={styles.sectionTitle}>Choose your plan</Text>
-
-        {/* Yearly Card - Recommended with Trial */}
-        <Pressable
-          style={[
-            styles.pricingCard,
-            selectedInterval === 'year' && styles.pricingCardActive,
-          ]}
-          onPress={() => setSelectedInterval('year')}
-        >
-          <View style={styles.recommendedBadge}>
-            <Text style={styles.recommendedText}>3-DAY FREE TRIAL</Text>
+        {/* Subscription Info */}
+        <View style={styles.subscriptionInfo}>
+          <Text style={styles.subscriptionName}>MemoryAisle Premium</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.planPrice}>${yearlyPrice.toFixed(2)}</Text>
+            <Text style={styles.planPeriod}>/year</Text>
           </View>
-          <View style={styles.cardRow}>
-            <View style={styles.radioOuter}>
-              {selectedInterval === 'year' && <View style={styles.radioInner} />}
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.planName}>Yearly</Text>
-              <View style={styles.priceRow}>
-                <Text style={styles.planPrice}>$47.88</Text>
-                <Text style={styles.planPeriod}>/year</Text>
-              </View>
-              <Text style={styles.monthlyBreakdown}>Just $3.99/month</Text>
-              <Text style={styles.savingsText}>Save {savingsPercentage}% (${savingsAmount.toFixed(2)})</Text>
-              <Text style={styles.trialText}>Start with 3 days free</Text>
-            </View>
-          </View>
-        </Pressable>
-
-        {/* Monthly Card */}
-        <Pressable
-          style={[
-            styles.pricingCard,
-            selectedInterval === 'month' && styles.pricingCardActive,
-          ]}
-          onPress={() => setSelectedInterval('month')}
-        >
-          <View style={styles.cardRow}>
-            <View style={styles.radioOuter}>
-              {selectedInterval === 'month' && <View style={styles.radioInner} />}
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.planName}>Monthly</Text>
-              <View style={styles.priceRow}>
-                <Text style={styles.planPrice}>$9.99</Text>
-                <Text style={styles.planPeriod}>/month</Text>
-              </View>
-              <Text style={styles.monthlyBreakdown}>Billed monthly</Text>
-            </View>
-          </View>
-        </Pressable>
+          <Text style={styles.subscriptionDetails}>Yearly auto-renewable subscription</Text>
+          <Text style={styles.monthlyBreakdown}>Just $3.99/month</Text>
+        </View>
 
         {/* Features */}
         <Text style={[styles.sectionTitle, { marginTop: SPACING.xl }]}>
@@ -237,7 +187,7 @@ export default function UpgradePage() {
               style={styles.termsLink}
               onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
             >
-              Terms of Service
+              Terms of Use
             </Text>
             {' '}and{' '}
             <Text
@@ -248,19 +198,8 @@ export default function UpgradePage() {
             </Text>
             .
           </Text>
-          <Text style={styles.termsText}>
-            For questions, contact{' '}
-            <Text
-              style={styles.termsLink}
-              onPress={() => Linking.openURL('mailto:legal@memoryaisle.app')}
-            >
-              legal@memoryaisle.app
-            </Text>
-          </Text>
           <Text style={styles.cancelText}>
-            {selectedInterval === 'year'
-              ? '3-day free trial. Cancel anytime during trial. After trial, $47.88/year billed annually.'
-              : 'Cancel anytime. $9.99/month billed monthly.'}
+            Payment will be charged to your Apple ID. Subscription automatically renews at ${yearlyPrice.toFixed(2)}/year unless canceled at least 24 hours before the end of the current period. Manage subscriptions in your Apple ID account settings.
           </Text>
         </View>
       </ScrollView>
@@ -280,9 +219,7 @@ export default function UpgradePage() {
           {isLoading ? (
             <ActivityIndicator color="#FFF" />
           ) : (
-            <Text style={styles.ctaText}>
-              {selectedInterval === 'year' ? 'Start Free Trial' : 'Subscribe Now'}
-            </Text>
+            <Text style={styles.ctaText}>Subscribe Now - ${yearlyPrice.toFixed(2)}/year</Text>
           )}
         </Pressable>
         <Pressable onPress={handleRestore} style={styles.restoreButton}>
@@ -357,91 +294,46 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
 
-  // Pricing Cards
-  pricingCard: {
-    backgroundColor: 'rgba(255,255,255,0.8)',
+  // Subscription Info
+  subscriptionInfo: {
+    backgroundColor: 'rgba(212, 165, 71, 0.1)',
     borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
+    padding: SPACING.xl,
+    marginBottom: SPACING.xl,
     borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  pricingCardActive: {
     borderColor: COLORS.gold.base,
-    backgroundColor: 'rgba(212, 165, 71, 0.08)',
+    alignItems: 'center',
   },
-  recommendedBadge: {
-    position: 'absolute',
-    top: -12,
-    right: SPACING.md,
-    backgroundColor: COLORS.success,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  recommendedText: {
-    fontSize: FONT_SIZES.xs,
+  subscriptionName: {
+    fontSize: FONT_SIZES.lg,
     fontWeight: '700',
-    color: COLORS.white,
+    color: COLORS.gold.dark,
+    marginBottom: SPACING.sm,
   },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  radioOuter: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.gold.base,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  radioInner: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: COLORS.gold.base,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  planName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
+  subscriptionDetails: {
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text.secondary,
+    marginTop: SPACING.xs,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   planPrice: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: '800',
     color: COLORS.text.primary,
   },
   planPeriod: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.lg,
     color: COLORS.text.secondary,
     marginLeft: 4,
   },
   monthlyBreakdown: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    marginTop: 2,
-  },
-  savingsText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.success,
-    marginTop: 4,
-  },
-  trialText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '700',
-    color: COLORS.gold.dark,
-    marginTop: 4,
+    marginTop: SPACING.xs,
   },
 
   // Features

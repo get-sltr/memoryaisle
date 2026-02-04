@@ -52,7 +52,7 @@ const FEATURE_MESSAGES: Record<FeatureKey, { title: string; description: string;
   },
   familyMembers: {
     title: 'More Family Members',
-    description: 'Upgrade to add up to 12 family members to your household',
+    description: 'Upgrade to add up to 7 family members to your household',
     icon: '👨‍👩‍👧‍👦',
   },
   voiceCommands: {

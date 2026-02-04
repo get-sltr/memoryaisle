@@ -1,7 +1,5 @@
 import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
-import * as Linking from 'expo-linking';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 import type { User, Household } from '../types';
@@ -383,7 +381,13 @@ export async function getUserHousehold(): Promise<Household | null> {
       .single();
 
     if (error) throw error;
-    return data;
+    if (!data) return null;
+
+    // Map snake_case DB columns to camelCase TypeScript fields
+    return {
+      ...data,
+      familyProfile: data.family_profile ?? undefined,
+    };
   } catch (error) {
     logger.error('Error getting household:', error);
     return null;
@@ -453,10 +457,10 @@ export async function joinHousehold(inviteCode: string): Promise<{ household: Ho
 
     // Determine if owner is premium
     const isPremium = ownerSubscription?.tier === 'premium' &&
-      (ownerSubscription?.status === 'active' || ownerSubscription?.status === 'trialing');
+      ownerSubscription?.status === 'active';
 
-    // Get member limit: 2 for free, 12 for premium
-    const memberLimit = isPremium ? 12 : 2;
+    // Get member limit: 1 for free, 7 for premium
+    const memberLimit = isPremium ? 7 : 1;
 
     // Count current members in the household
     const { count: currentMemberCount } = await supabase
@@ -469,8 +473,8 @@ export async function joinHousehold(inviteCode: string): Promise<{ household: Ho
       return {
         household: null,
         error: isPremium
-          ? 'This household has reached its maximum capacity (12 members).'
-          : 'This household has reached its free tier limit (2 members). The household owner needs to upgrade to Premium to add more members.',
+          ? 'This household has reached its maximum capacity (7 members).'
+          : 'Free accounts are limited to 1 member. Upgrade to Premium to add up to 7 family members.',
         needsPremium: !isPremium,
       };
     }
@@ -556,6 +560,31 @@ export async function verifyPhoneForAccount(
 // Resend OTP for phone linking (uses same link function)
 export async function resendPhoneLinkOTP(phone: string): Promise<AuthResponse> {
   return linkPhoneNumber(phone);
+}
+
+// Save dietary preferences for a household
+export async function saveDietaryPreferences(
+  householdId: string,
+  dietaryPreferences: string[],
+  culturalPreferences: string[],
+  familyProfile: Record<string, any>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('households')
+      .update({
+        dietary_preferences: dietaryPreferences,
+        cultural_preferences: culturalPreferences,
+        family_profile: familyProfile,
+      })
+      .eq('id', householdId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error: any) {
+    logger.error('Error saving dietary preferences:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 // Listen to auth state changes
