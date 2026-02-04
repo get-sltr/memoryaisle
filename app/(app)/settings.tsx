@@ -9,11 +9,13 @@ import {
   Linking,
   ActivityIndicator,
   AppState,
+  Switch,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { SubscriptionModal } from '../../src/components/SubscriptionModal';
 import { useSubscription } from '../../src/hooks/useSubscription';
@@ -95,6 +97,57 @@ export default function SettingsScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+  const [saveMiraHistory, setSaveMiraHistory] = useState(true);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+
+  // Load Mira history preference
+  useEffect(() => {
+    AsyncStorage.getItem('mira_save_history').then((value) => {
+      if (value !== null) {
+        setSaveMiraHistory(value === 'true');
+      }
+    });
+  }, []);
+
+  // Handle Mira history toggle
+  const handleMiraHistoryToggle = async (value: boolean) => {
+    setSaveMiraHistory(value);
+    await AsyncStorage.setItem('mira_save_history', value.toString());
+  };
+
+  // Clear Mira conversation history
+  const handleClearMiraHistory = () => {
+    Alert.alert(
+      'Clear Mira History',
+      'This will permanently delete all your conversations with Mira. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear History',
+          style: 'destructive',
+          onPress: async () => {
+            if (!user?.id) return;
+            setIsClearingHistory(true);
+            try {
+              const { error } = await supabase
+                .from('mira_conversations')
+                .delete()
+                .eq('user_id', user.id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Mira conversation history cleared');
+            } catch (error: any) {
+              console.error('Error clearing Mira history:', error);
+              Alert.alert('Error', 'Failed to clear conversation history');
+            } finally {
+              setIsClearingHistory(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Check notification permission status
   const checkNotificationStatus = useCallback(async () => {
@@ -456,6 +509,32 @@ export default function SettingsScreen() {
             title="Delete Account"
             subtitle="Permanently delete your account and data"
             onPress={handleDeleteAccount}
+            danger
+          />
+        </SectionCard>
+
+        {/* Mira AI Section */}
+        <SectionCard title="Mira AI" icon="✨">
+          <View style={styles.settingRow}>
+            <Text style={styles.settingIcon}>💬</Text>
+            <View style={styles.settingContent}>
+              <Text style={styles.settingTitle}>Save Conversation History</Text>
+              <Text style={styles.settingSubtitle}>
+                When enabled, Mira remembers your past conversations to give better recommendations
+              </Text>
+            </View>
+            <Switch
+              value={saveMiraHistory}
+              onValueChange={handleMiraHistoryToggle}
+              trackColor={{ false: COLORS.platinum.base, true: COLORS.gold.light }}
+              thumbColor={saveMiraHistory ? COLORS.gold.base : COLORS.platinum.dark}
+            />
+          </View>
+          <SettingRow
+            icon="🗑️"
+            title="Clear Conversation History"
+            subtitle={isClearingHistory ? 'Clearing...' : 'Delete all Mira conversations'}
+            onPress={isClearingHistory ? undefined : handleClearMiraHistory}
             danger
           />
         </SectionCard>
