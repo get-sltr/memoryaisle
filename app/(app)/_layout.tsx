@@ -85,9 +85,9 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
-          name="wallet"
+          name="store-cards"
           options={{
-            title: 'Wallet',
+            title: 'Store Cards',
           }}
         />
         <Tabs.Screen

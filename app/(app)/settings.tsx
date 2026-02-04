@@ -435,9 +435,9 @@ export default function SettingsScreen() {
           />
           <SettingRow
             icon="💳"
-            title="Wallet"
-            subtitle="Loyalty cards, credits & gift cards"
-            onPress={() => router.push('/(app)/wallet')}
+            title="My Store Cards"
+            subtitle="Loyalty and rewards cards"
+            onPress={() => router.push('/(app)/store-cards')}
           />
           <SettingRow
             icon="📜"
@@ -558,7 +558,7 @@ export default function SettingsScreen() {
         </Pressable>
 
         {/* Version */}
-        <Text style={styles.versionText}>MemoryAisle v1.0.0</Text>
+        <Text style={styles.versionText}>MemoryAisle v1.1.0</Text>
       </ScrollView>
 
       <SubscriptionModal
