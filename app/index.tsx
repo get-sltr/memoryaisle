@@ -28,6 +28,14 @@ export default function Index() {
     return <Redirect href="/(auth)/household" />;
   }
 
+  // Authenticated with household but no dietary setup done -> Dietary setup
+  const dietarySetupDone =
+    (household.dietary_preferences && household.dietary_preferences.length > 0) ||
+    household.familyProfile?.dietarySetupCompleted;
+  if (!dietarySetupDone) {
+    return <Redirect href="/(auth)/dietary-setup" />;
+  }
+
   // Authenticated with household -> Main app
   // Phone verification is optional and available in profile/settings
   return <Redirect href="/(app)" />;

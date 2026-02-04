@@ -26,7 +26,6 @@ interface UseSubscriptionReturn {
 
   // Actions
   refresh: () => Promise<void>;
-  purchaseMonthly: () => Promise<boolean>;
   purchaseYearly: () => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
 }
@@ -128,20 +127,6 @@ export function useSubscription(): UseSubscriptionReturn {
     [subscription]
   );
 
-  // Purchase monthly subscription
-  const purchaseMonthly = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) return false;
-    const success = await iapService.purchaseSubscription(
-      IAP_PRODUCTS.PREMIUM_MONTHLY,
-      user.id
-    );
-    if (success) {
-      // Wait a moment for the purchase to process
-      setTimeout(() => fetchSubscription(), 2000);
-    }
-    return success;
-  }, [user?.id, fetchSubscription]);
-
   // Purchase yearly subscription
   const purchaseYearly = useCallback(async (): Promise<boolean> => {
     if (!user?.id) return false;
@@ -172,7 +157,6 @@ export function useSubscription(): UseSubscriptionReturn {
     canAccess,
     getLimit,
     refresh: fetchSubscription,
-    purchaseMonthly,
     purchaseYearly,
     restorePurchases,
   };

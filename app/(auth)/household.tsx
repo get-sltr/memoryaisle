@@ -62,7 +62,7 @@ export default function HouseholdSetup() {
     console.log("DEBUG: Setting household:", household?.id);
     setHousehold(household);
     // Navigate directly to app to bypass root router check
-    router.replace('/(app)');
+    router.replace('/(auth)/dietary-setup');
   };
 
   const handleJoin = async () => {
@@ -104,7 +104,7 @@ export default function HouseholdSetup() {
     console.log("DEBUG: Setting household:", household?.id);
     setHousehold(household);
     // Navigate directly to app to bypass root router check
-    router.replace('/(app)');
+    router.replace('/(auth)/dietary-setup');
   };
 
   return (
@@ -230,7 +230,7 @@ export default function HouseholdSetup() {
         onClose={() => setShowPaywall(false)}
         feature="familyMembers"
         title="Need More Family Members?"
-        description="The household owner needs to upgrade to Premium to add more than 2 family members."
+        description="Free accounts are limited to 1 member. Upgrade to Premium to add up to 7 family members."
       />
     </View>
   );

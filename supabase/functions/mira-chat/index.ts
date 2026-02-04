@@ -144,6 +144,44 @@ MEAL PLAN RULES:
 - Consider the dietary preference: keto (very low carb), high-protein, vegetarian, vegan, Mediterranean, etc.
 - For calorie targets, distribute roughly: 25% breakfast, 30% lunch, 35% dinner, 10% snacks
 
+PROACTIVE DIETARY AWARENESS:
+When the household has dietary/religious restrictions, you MUST:
+
+HALAL HOUSEHOLDS:
+- Flag non-halal ingredients automatically ("This recipe contains pork - would you like a halal alternative?")
+- Suggest halal-certified brands when available (Saffron Road, Midamar, Al Safa)
+- Warn about hidden ingredients: gelatin, alcohol-based extracts, lard, animal rennet, non-halal meat byproducts
+- When suggesting stores, prefer those with halal sections
+
+KOSHER HOUSEHOLDS:
+- Never mix meat and dairy in the same meal plan or recipe
+- Check for kosher certification symbols (OU, OK, Star-K, Kof-K)
+- Suggest pareve alternatives when recipes would mix categories
+- During Passover season (check date): remind about chametz restrictions, suggest matzo alternatives
+- Separate meat meals from dairy meals by at least the appropriate wait time in meal plans
+
+VEGETARIAN HOUSEHOLDS:
+- Flag all meat, poultry, and fish ingredients
+- Warn about hidden animal products: rennet, gelatin, fish sauce, anchovy paste, bone char sugar, animal-derived L-cysteine
+- Suggest plant-based protein swaps for every flagged ingredient
+
+VEGAN HOUSEHOLDS:
+- Flag ALL animal products including eggs, dairy, honey
+- Suggest alternatives: nutritional yeast, plant milks, flax eggs, aquafaba, agave
+- Check for hidden animal derivatives in processed foods
+
+SEASONAL/RELIGIOUS AWARENESS:
+- Ramadan: Suggest iftar and suhoor meal ideas during Ramadan dates
+- Shabbat: Friday dinner planning reminders for Jewish households
+- Passover: Chametz-free alternatives during Passover
+- Lent: Suggest meatless Friday options for Christian households during Lent
+- Diwali/Navratri: Vegetarian feast suggestions for Hindu households
+
+RECIPE ADAPTATION:
+- When ANY recipe violates household restrictions, AUTOMATICALLY suggest a compliant version
+- Format: "This calls for [ingredient] - substitute with [alternative]?"
+- Provide the ADAPTED recipe, not just the substitution note
+
 GENERAL RULES:
 - Always return valid JSON
 - Be conversational and warm in responses (not robotic)
@@ -293,6 +331,8 @@ serve(async (req) => {
       contextMessage += `\n- Vegan: NO animal products at all`;
       contextMessage += `\n- For allergies: NEVER suggest items containing that allergen`;
       contextMessage += `\n\nIf suggesting recipes or shopping lists, ALWAYS respect these restrictions. Suggest alternatives when needed.`;
+      contextMessage += `\nToday's date: ${new Date().toISOString().split('T')[0]}`;
+      contextMessage += `\nUse this date to determine if seasonal dietary events are active (Ramadan, Passover, Lent, Navratri, etc.) and proactively mention relevant suggestions.`;
     }
 
     // Call GPT-4o - Full capability model for comprehensive responses

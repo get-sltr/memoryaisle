@@ -60,21 +60,6 @@ import {
   SHADOWS,
 } from '../../src/constants/theme';
 
-// Phone icon component
-function PhoneIcon({ size = 20, color = COLORS.gold.dark }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
 export default function SignIn() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -300,20 +285,6 @@ export default function SignIn() {
                 </View>
               </Pressable>
 
-              {/* Phone Sign In Button */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.phoneButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={() => router.push('/(auth)/phone-sign-in')}
-                disabled={loading || oauthLoading !== null}
-              >
-                <View style={styles.phoneButtonContent}>
-                  <PhoneIcon size={18} color={COLORS.gold.dark} />
-                  <Text style={styles.phoneButtonText}>Sign in with Phone</Text>
-                </View>
-              </Pressable>
             </View>
           </View>
 
@@ -554,27 +525,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  // Phone Sign-In
-  phoneButton: {
-    borderRadius: BORDER_RADIUS.lg,
-    height: 50,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(212, 165, 71, 0.3)',
-    backgroundColor: 'rgba(212, 175, 95, 0.08)',
-  },
-  phoneButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-  },
-  phoneButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.gold.dark,
-  },
-
   // Footer
   footer: {
     flexDirection: 'row',

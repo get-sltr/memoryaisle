@@ -29,7 +29,8 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../src/constants/theme';
-import type { CulturalPreference, WeeklyTradition } from '../../src/types';
+import type { CulturalPreference, WeeklyTradition, DietaryPreference, AllergenType } from '../../src/types';
+import { saveDietaryPreferences } from '../../src/services/auth';
 
 // Member role options
 const ROLE_OPTIONS = [
@@ -37,6 +38,31 @@ const ROLE_OPTIONS = [
   { id: 'child', label: 'Child', icon: '👶' },
   { id: 'grandparent', label: 'Grandparent', icon: '🧓' },
   { id: 'other', label: 'Other', icon: '👤' },
+];
+
+// Dietary preference options
+const DIETARY_OPTIONS: { id: DietaryPreference; label: string; icon: string }[] = [
+  { id: 'halal', label: 'Halal', icon: '\u262A\uFE0F' },
+  { id: 'kosher', label: 'Kosher', icon: '\u2721\uFE0F' },
+  { id: 'vegetarian', label: 'Vegetarian', icon: '\uD83E\uDD66' },
+  { id: 'vegan', label: 'Vegan', icon: '\uD83C\uDF3F' },
+  { id: 'keto', label: 'Keto', icon: '\uD83E\uDD51' },
+  { id: 'gluten-free', label: 'Gluten-Free', icon: '\uD83C\uDF3E' },
+  { id: 'dairy-free', label: 'Dairy-Free', icon: '\uD83E\uDD5B' },
+  { id: 'nut-free', label: 'Nut-Free', icon: '\uD83E\uDD5C' },
+];
+
+// Allergen options
+const ALLERGEN_OPTIONS: { id: AllergenType; label: string; icon: string }[] = [
+  { id: 'dairy', label: 'Dairy', icon: '\uD83E\uDDC0' },
+  { id: 'eggs', label: 'Eggs', icon: '\uD83E\uDD5A' },
+  { id: 'tree_nuts', label: 'Tree Nuts', icon: '\uD83C\uDF30' },
+  { id: 'peanuts', label: 'Peanuts', icon: '\uD83E\uDD5C' },
+  { id: 'shellfish', label: 'Shellfish', icon: '\uD83E\uDD90' },
+  { id: 'fish', label: 'Fish', icon: '\uD83D\uDC1F' },
+  { id: 'wheat', label: 'Wheat/Gluten', icon: '\uD83C\uDF3E' },
+  { id: 'soy', label: 'Soy', icon: '\uD83C\uDF31' },
+  { id: 'sesame', label: 'Sesame', icon: '\uD83C\uDF6A' },
 ];
 
 // Cultural/Religious options
@@ -72,6 +98,15 @@ export default function FamilyScreen() {
   // Form state
   const [familyName, setFamilyName] = useState(familyProfile.familyName || '');
   const [familyMotto, setFamilyMotto] = useState(familyProfile.familyMotto || '');
+
+  // Dietary preferences (household-level)
+  const [dietaryPreferences, setDietaryPreferences] = useState<DietaryPreference[]>(
+    (household?.dietary_preferences as DietaryPreference[]) || []
+  );
+  const [householdAllergens, setHouseholdAllergens] = useState<AllergenType[]>(
+    // Extract from familyProfile if stored there, otherwise empty
+    (familyProfile as any)?.allergens || []
+  );
 
   // Cultural & Calendar preferences
   const [culturalPreferences, setCulturalPreferences] = useState<CulturalPreference[]>(
@@ -123,6 +158,8 @@ export default function FamilyScreen() {
     const changed =
       familyName !== (original.familyName || '') ||
       familyMotto !== (original.familyMotto || '') ||
+      JSON.stringify(dietaryPreferences) !== JSON.stringify((household?.dietary_preferences as DietaryPreference[]) || []) ||
+      JSON.stringify(householdAllergens) !== JSON.stringify((original as any)?.allergens || []) ||
       JSON.stringify(culturalPreferences) !== JSON.stringify(original.culturalPreferences || ['secular']) ||
       JSON.stringify(weeklyTraditions) !== JSON.stringify(original.weeklyTraditions || []) ||
       shoppingDay !== original.usualShoppingDay ||
@@ -137,7 +174,8 @@ export default function FamilyScreen() {
       healthGoals !== (original.healthGoals?.join(', ') || '');
     setHasChanges(changed);
   }, [
-    familyName, familyMotto, culturalPreferences, weeklyTraditions, shoppingDay,
+    familyName, familyMotto, dietaryPreferences, householdAllergens,
+    culturalPreferences, weeklyTraditions, shoppingDay,
     favoriteActivities, favoriteMeals, traditions,
     favoriteRestaurant, favoriteTakeout, movieNightSnacks, gameNightSnacks,
     weeklyGoals, healthGoals, household,
@@ -183,6 +221,24 @@ export default function FamilyScreen() {
       setIsLoadingSparkJoy(false);
     }
   }, [favoriteMeals, weeklyTraditions, healthGoals, movieNightSnacks, gameNightSnacks, household, isLoadingSparkJoy]);
+
+  // Toggle dietary preference
+  const toggleDietaryPref = (pref: DietaryPreference) => {
+    setDietaryPreferences(prev =>
+      prev.includes(pref)
+        ? prev.filter(p => p !== pref)
+        : [...prev, pref]
+    );
+  };
+
+  // Toggle household allergen
+  const toggleHouseholdAllergen = (allergen: AllergenType) => {
+    setHouseholdAllergens(prev =>
+      prev.includes(allergen)
+        ? prev.filter(a => a !== allergen)
+        : [...prev, allergen]
+    );
+  };
 
   // Toggle cultural preference
   const toggleCulturalPref = (pref: CulturalPreference) => {
@@ -236,11 +292,31 @@ export default function FamilyScreen() {
       anniversaries: familyProfile.anniversaries,
     };
 
-    // Update local state (in real app, would save to Supabase)
     if (household) {
+      // Save dietary preferences and family profile to Supabase
+      const profileWithAllergens = {
+        ...updatedProfile,
+        allergens: householdAllergens.length > 0 ? householdAllergens : undefined,
+      };
+
+      const { success, error } = await saveDietaryPreferences(
+        household.id,
+        dietaryPreferences,
+        culturalPreferences,
+        profileWithAllergens,
+      );
+
+      if (!success) {
+        Alert.alert('Error', error || 'Failed to save preferences');
+        return;
+      }
+
+      // Update local store
       setHousehold({
         ...household,
-        familyProfile: updatedProfile,
+        dietary_preferences: dietaryPreferences,
+        cultural_preferences: culturalPreferences,
+        familyProfile: profileWithAllergens,
       });
     }
 
@@ -332,6 +408,85 @@ export default function FamilyScreen() {
                   <Text style={[
                     styles.cultureChipLabel,
                     culturalPreferences.includes(option.id) && styles.cultureChipLabelSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </SectionCard>
+
+        {/* Dietary Preferences Section */}
+        <SectionCard
+          title="Dietary Preferences"
+          icon="🥗"
+          subtitle="Mira will respect these in all suggestions"
+        >
+          <Text style={styles.chipSectionLabel}>Household dietary requirements</Text>
+          <View style={styles.chipGrid}>
+            {DIETARY_OPTIONS.map((option) => (
+              <Pressable
+                key={option.id}
+                style={[
+                  styles.cultureChip,
+                  dietaryPreferences.includes(option.id) && styles.cultureChipSelected,
+                ]}
+                onPress={() => toggleDietaryPref(option.id)}
+              >
+                <BlurView intensity={15} tint="light" style={StyleSheet.absoluteFill} />
+                <LinearGradient
+                  colors={dietaryPreferences.includes(option.id)
+                    ? [`${COLORS.gold.light}40`, `${COLORS.gold.base}20`]
+                    : ['rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.3)']
+                  }
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={[
+                  styles.chipBorder,
+                  dietaryPreferences.includes(option.id) && styles.chipBorderSelected
+                ]} />
+                <View style={styles.cultureChipContent}>
+                  <Text style={styles.cultureChipIcon}>{option.icon}</Text>
+                  <Text style={[
+                    styles.cultureChipLabel,
+                    dietaryPreferences.includes(option.id) && styles.cultureChipLabelSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[styles.chipSectionLabel, { marginTop: SPACING.md }]}>Household allergies</Text>
+          <View style={styles.chipGrid}>
+            {ALLERGEN_OPTIONS.map((option) => (
+              <Pressable
+                key={option.id}
+                style={[
+                  styles.cultureChip,
+                  householdAllergens.includes(option.id) && styles.cultureChipSelected,
+                ]}
+                onPress={() => toggleHouseholdAllergen(option.id)}
+              >
+                <BlurView intensity={15} tint="light" style={StyleSheet.absoluteFill} />
+                <LinearGradient
+                  colors={householdAllergens.includes(option.id)
+                    ? ['rgba(239, 83, 80, 0.2)', 'rgba(239, 83, 80, 0.1)']
+                    : ['rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.3)']
+                  }
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={[
+                  styles.chipBorder,
+                  householdAllergens.includes(option.id) && { borderColor: '#EF5350', borderWidth: 1 }
+                ]} />
+                <View style={styles.cultureChipContent}>
+                  <Text style={styles.cultureChipIcon}>{option.icon}</Text>
+                  <Text style={[
+                    styles.cultureChipLabel,
+                    householdAllergens.includes(option.id) && { color: '#C62828', fontWeight: '600' as const }
                   ]}>
                     {option.label}
                   </Text>

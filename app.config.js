@@ -2,7 +2,7 @@
 // This file reads environment variables and injects them into the app
 // Create a .env file with your values (see .env.example)
 
-module.exports = ({ config }) => {
+module.exports = function expoConfig({ config }) {
   return {
     ...config,
     extra: {

@@ -7,17 +7,12 @@ import 'react-native-url-polyfill/auto';
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || '';
 const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
 
-// Custom storage adapter for React Native using SecureStore
+// Simple SecureStore adapter for Supabase auth session persistence.
+// SecureStore uses iOS Keychain / Android Keystore (hardware-backed encryption).
 const ExpoSecureStoreAdapter = {
-  getItem: async (key: string): Promise<string | null> => {
-    return await SecureStore.getItemAsync(key);
-  },
-  setItem: async (key: string, value: string): Promise<void> => {
-    await SecureStore.setItemAsync(key, value);
-  },
-  removeItem: async (key: string): Promise<void> => {
-    await SecureStore.deleteItemAsync(key);
-  },
+  getItem: (key: string) => SecureStore.getItemAsync(key),
+  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
 };
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

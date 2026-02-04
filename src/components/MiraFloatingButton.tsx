@@ -26,7 +26,7 @@ import { SwipeButton } from './SwipeButton';
 import { supabase } from '../services/supabase';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const BUTTON_SIZE = 60;
+const BUTTON_SIZE = 72;
 const EDGE_PADDING = 10;
 
 interface Message {
@@ -54,18 +54,34 @@ export function MiraFloatingButton() {
   const [isLoading, setIsLoading] = useState(false);
   const [familyDietaryInfo, setFamilyDietaryInfo] = useState<string | null>(null);
 
-  // Fetch family dietary restrictions on mount
+  // Fetch family dietary restrictions on mount (household-level + individual members)
   useEffect(() => {
     async function fetchFamilyDietary() {
       if (!household?.id) return;
       try {
+        const restrictions: string[] = [];
+
+        // 1. Household-level dietary preferences and cultural preferences
+        const { data: householdData } = await supabase
+          .from('households')
+          .select('dietary_preferences, cultural_preferences, family_profile')
+          .eq('id', household.id)
+          .single();
+
+        if (householdData && householdData.dietary_preferences?.length > 0) {
+          restrictions.push(`Household dietary preferences: ${householdData.dietary_preferences.join(', ')}`);
+        }
+        if (householdData && householdData.cultural_preferences?.length > 0) {
+          restrictions.push(`Household cultural/religious background: ${householdData.cultural_preferences.join(', ')}`);
+        }
+
+        // 2. Individual family member restrictions
         const { data: members } = await supabase
           .from('family_members')
           .select('name, allergies, dietary_preferences')
           .eq('household_id', household.id);
 
         if (members && members.length > 0) {
-          const restrictions: string[] = [];
           members.forEach((m: any) => {
             if (m.allergies?.length > 0) {
               restrictions.push(`${m.name} has allergies: ${m.allergies.join(', ')}`);
@@ -74,9 +90,10 @@ export function MiraFloatingButton() {
               restrictions.push(`${m.name} follows: ${m.dietary_preferences.join(', ')}`);
             }
           });
-          if (restrictions.length > 0) {
-            setFamilyDietaryInfo(restrictions.join('. '));
-          }
+        }
+
+        if (restrictions.length > 0) {
+          setFamilyDietaryInfo(restrictions.join('. '));
         }
       } catch (e) {
         console.log('Could not fetch family dietary info');
@@ -269,11 +286,7 @@ export function MiraFloatingButton() {
         {...panResponder.panHandlers}
       >
         <Pressable onPress={handlePress} style={styles.buttonInner}>
-          <BlurView intensity={15} tint="light" style={StyleSheet.absoluteFill} />
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 248, 245, 0.3)', 'rgba(245, 240, 230, 0.25)']}
-            style={StyleSheet.absoluteFill}
-          />
+          <View style={styles.buttonBackground} />
           <View style={styles.buttonBorder} />
           <Image
             source={require('../../assets/icons/mira_button.png')}
@@ -559,15 +572,20 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BUTTON_SIZE / 2,
     borderTopRightRadius: BUTTON_SIZE / 2,
   },
+  buttonBackground: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BUTTON_SIZE / 2,
+    backgroundColor: '#FFFFFF',
+  },
   buttonBorder: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: BUTTON_SIZE / 2,
     borderWidth: 2.5,
-    borderColor: 'rgba(212, 165, 71, 0.7)',
+    borderColor: COLORS.gold.base,
   },
   miraIcon: {
-    width: 56,
-    height: 56,
+    width: BUTTON_SIZE - 4,
+    height: BUTTON_SIZE - 4,
   },
   glowRing: {
     position: 'absolute',
@@ -576,8 +594,8 @@ const styles = StyleSheet.create({
     right: -4,
     bottom: -4,
     borderRadius: (BUTTON_SIZE + 8) / 2,
-    borderWidth: 2.5,
-    borderColor: 'rgba(212, 165, 71, 0.45)',
+    borderWidth: 2,
+    borderColor: 'rgba(212, 165, 71, 0.35)',
   },
 
   // Modal styles

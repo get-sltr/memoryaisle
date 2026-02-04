@@ -109,8 +109,8 @@ class ErrorTrackingService {
       });
 
       // Set up promise rejection handler
-      const originalRejectionHandler = global.onunhandledrejection;
-      global.onunhandledrejection = (event: any) => {
+      const originalRejectionHandler = globalThis.onunhandledrejection;
+      globalThis.onunhandledrejection = (event: any) => {
         this.logError({
           error: event?.reason || new Error('Unhandled Promise Rejection'),
           severity: 'error',
@@ -151,10 +151,13 @@ class ErrorTrackingService {
       const errorStack = error instanceof Error ? error.stack : undefined;
 
       // Send to Sentry
-      const sentryLevel = severity === 'critical' ? 'fatal'
-        : severity === 'warning' ? 'warning'
-        : severity === 'info' ? 'info'
-        : 'error';
+      const severityToSentryLevel: Record<ErrorSeverity, string> = {
+        critical: 'fatal',
+        warning: 'warning',
+        info: 'info',
+        error: 'error',
+      };
+      const sentryLevel = severityToSentryLevel[severity] || 'error';
 
       Sentry.withScope((scope) => {
         scope.setLevel(sentryLevel as Sentry.SeverityLevel);

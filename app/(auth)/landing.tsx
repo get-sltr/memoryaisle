@@ -373,40 +373,7 @@ export default function LandingScreen() {
             },
           ]}
         >
-          {/* Get Started Button */}
-          <Pressable
-            onPress={() => router.push('/(auth)/sign-up')}
-            style={({ pressed }) => [
-              styles.glassButtonPrimary,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <LinearGradient
-              colors={[
-                'rgba(212, 175, 95, 0.9)',
-                'rgba(212, 165, 71, 0.8)',
-                'rgba(184, 144, 50, 0.85)',
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.glassButtonPrimaryGradient}
-            >
-              <View style={styles.glassButtonInner}>
-                <Text style={styles.glassButtonPrimaryText}>Get Started</Text>
-              </View>
-              <ShimmerEffect width={320} />
-            </LinearGradient>
-            <View style={styles.glassButtonShine} />
-          </Pressable>
-
-          {/* Divider */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Sign in with Apple - HIG-compliant full-width button */}
+          {/* Sign in with Apple - HIG-compliant, equal prominence */}
           <Pressable
             onPress={() => handleSocialSignIn('apple')}
             disabled={isLoading !== null}
@@ -428,7 +395,7 @@ export default function LandingScreen() {
             </View>
           </Pressable>
 
-          {/* Google Sign In - Full Width */}
+          {/* Google Sign In */}
           <Pressable
             onPress={() => handleSocialSignIn('google')}
             disabled={isLoading !== null}
@@ -450,7 +417,7 @@ export default function LandingScreen() {
             </View>
           </Pressable>
 
-          {/* Facebook Sign In - Full Width */}
+          {/* Facebook Sign In */}
           <Pressable
             onPress={() => handleSocialSignIn('facebook')}
             disabled={isLoading !== null}
@@ -472,6 +439,39 @@ export default function LandingScreen() {
             </View>
           </Pressable>
 
+          {/* Divider */}
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Get Started with Email */}
+          <Pressable
+            onPress={() => router.push('/(auth)/sign-up')}
+            style={({ pressed }) => [
+              styles.glassButtonPrimary,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <LinearGradient
+              colors={[
+                'rgba(212, 175, 95, 0.9)',
+                'rgba(212, 165, 71, 0.8)',
+                'rgba(184, 144, 50, 0.85)',
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.glassButtonPrimaryGradient}
+            >
+              <View style={styles.glassButtonInner}>
+                <Text style={styles.glassButtonPrimaryText}>Get Started with Email</Text>
+              </View>
+              <ShimmerEffect width={320} />
+            </LinearGradient>
+            <View style={styles.glassButtonShine} />
+          </Pressable>
+
           {/* Sign In Button */}
           <Pressable
             onPress={() => router.push('/(auth)/sign-in')}
@@ -489,7 +489,7 @@ export default function LandingScreen() {
             </BlurView>
           </Pressable>
 
-          {/* Browse as Guest */}
+          {/* Browse as Guest - prominent button */}
           <Pressable
             onPress={() => {
               useAuthStore.getState().enterGuestMode();
@@ -500,7 +500,9 @@ export default function LandingScreen() {
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={styles.guestButtonText}>Browse without an account</Text>
+            <View style={styles.guestButtonInner}>
+              <Text style={styles.guestButtonText}>Browse without an account</Text>
+            </View>
           </Pressable>
         </Animated.View>
       </View>
@@ -940,15 +942,22 @@ const styles = StyleSheet.create({
     color: COLORS.gold.dark,
   },
   guestButton: {
-    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(138, 145, 157, 0.3)',
+  },
+  guestButtonInner: {
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   guestButtonText: {
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '400',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif-medium' }),
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
     color: COLORS.text.secondary,
-    textDecorationLine: 'underline',
   },
   buttonPressed: {
     opacity: 0.9,
