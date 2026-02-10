@@ -171,7 +171,7 @@ export default function UpgradePage() {
             <Text style={styles.planPrice}>{displayPrice}</Text>
             <Text style={styles.planPeriod}>/year</Text>
           </View>
-          <Text style={styles.trialText}>Includes 10-day free trial</Text>
+          <Text style={styles.trialText}>Includes 2-week free trial</Text>
           <Text style={styles.subscriptionDetails}>Yearly auto-renewable subscription</Text>
 
           {/* Subscribe Button */}
@@ -180,7 +180,7 @@ export default function UpgradePage() {
             onPress={handleSubscribe}
             disabled={isLoading || isRestoring}
             accessibilityRole="button"
-            accessibilityLabel={`Subscribe for ${displayPrice} per year with 10-day free trial`}
+            accessibilityLabel={`Subscribe for ${displayPrice} per year with 2-week free trial`}
           >
             <LinearGradient
               colors={isLoading ? ['#CCCCCC', '#AAAAAA'] : [COLORS.gold.light, COLORS.gold.base]}
