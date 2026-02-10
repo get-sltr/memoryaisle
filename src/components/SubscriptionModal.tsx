@@ -46,26 +46,40 @@ export function SubscriptionModal({
   highlightFeature,
 }: SubscriptionModalProps) {
   const insets = useSafeAreaInsets();
-  const { subscription, isPremium, purchaseYearly, restorePurchases } = useSubscription();
+  const { isPremium, purchaseYearly, restorePurchases, product } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
-  const yearlyPrice = SUBSCRIPTION_TIERS.premium.price.yearly;
+  // Use live price from Apple, fall back to tier constant
+  const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.yearly.toFixed(2)}`;
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const success = await purchaseYearly();
+      const result = await purchaseYearly();
 
-      if (success) {
-        Alert.alert(
-          'Welcome to Premium!',
-          'Thank you for subscribing. All premium features are now unlocked!',
-          [{ text: 'OK', onPress: onClose }]
-        );
+      switch (result.status) {
+        case 'success':
+          Alert.alert(
+            'Welcome to Premium!',
+            'Thank you for subscribing. All premium features are now unlocked!',
+            [{ text: 'OK', onPress: onClose }]
+          );
+          break;
+        case 'cancelled':
+          // User dismissed — do nothing
+          break;
+        case 'pending':
+          Alert.alert(
+            'Purchase Pending',
+            'Your purchase is awaiting approval. Premium features will unlock once approved.'
+          );
+          break;
+        case 'error':
+          Alert.alert('Purchase Failed', result.message);
+          break;
       }
     } catch (error) {
-      console.error('Subscription error:', error);
       Alert.alert('Purchase Failed', 'There was an error processing your purchase. Please try again.');
     } finally {
       setIsLoading(false);
@@ -84,7 +98,6 @@ export function SubscriptionModal({
         Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
       }
     } catch (error) {
-      console.error('Restore error:', error);
       Alert.alert('Restore Failed', 'There was an error restoring your purchases. Please try again.');
     } finally {
       setIsRestoring(false);
@@ -152,11 +165,11 @@ export function SubscriptionModal({
             <View style={styles.subscriptionInfoCard}>
               <Text style={styles.subscriptionName}>MemoryAisle Premium</Text>
               <View style={styles.priceRow}>
-                <Text style={styles.planPrice}>${yearlyPrice.toFixed(2)}</Text>
+                <Text style={styles.planPrice}>{displayPrice}</Text>
                 <Text style={styles.planPeriod}>/year</Text>
               </View>
+              <Text style={styles.trialText}>Includes 10-day free trial</Text>
               <Text style={styles.subscriptionType}>Yearly auto-renewable subscription</Text>
-              <Text style={styles.planSavings}>Just $3.99/month</Text>
             </View>
 
             {/* Features */}
@@ -180,6 +193,8 @@ export function SubscriptionModal({
               style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
               onPress={handleSubscribe}
               disabled={isLoading || isRestoring}
+              accessibilityRole="button"
+              accessibilityLabel={`Subscribe for ${displayPrice} per year with 10-day free trial`}
             >
               <LinearGradient
                 colors={[COLORS.gold.light, COLORS.gold.base]}
@@ -189,7 +204,7 @@ export function SubscriptionModal({
                 <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.ctaText}>
-                  Subscribe Now - ${yearlyPrice.toFixed(2)}/year
+                  Start Free Trial — {displayPrice}/year
                 </Text>
               )}
             </Pressable>
@@ -199,6 +214,8 @@ export function SubscriptionModal({
               style={styles.restoreButton}
               onPress={handleRestore}
               disabled={isLoading || isRestoring}
+              accessibilityRole="button"
+              accessibilityLabel="Restore previous purchases"
             >
               {isRestoring ? (
                 <ActivityIndicator color={COLORS.text.secondary} size="small" />
@@ -208,7 +225,7 @@ export function SubscriptionModal({
             </Pressable>
 
             <Text style={styles.termsText}>
-              Payment will be charged to your Apple ID. Subscription automatically renews at ${yearlyPrice.toFixed(2)}/year unless canceled at least 24 hours before the end of the current period.{'\n\n'}
+              Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/year unless canceled at least 24 hours before the end of the current period.{'\n\n'}
               <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/terms')}>Terms of Use</Text>
               {'  •  '}
               <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}>Privacy Policy</Text>
@@ -252,8 +269,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeButton: {
-    width: HIG.minTouchTarget,      // Was 36 - HIG compliance
-    height: HIG.minTouchTarget,     // Was 36 - HIG compliance
+    width: HIG.minTouchTarget,
+    height: HIG.minTouchTarget,
     borderRadius: HIG.minTouchTarget / 2,
     backgroundColor: 'rgba(0, 0, 0, 0.06)',
     alignItems: 'center',
@@ -301,15 +318,15 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     marginLeft: 4,
   },
-  subscriptionType: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    marginTop: SPACING.xs,
-  },
-  planSavings: {
+  trialText: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.success,
+    marginTop: SPACING.sm,
+  },
+  subscriptionType: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text.secondary,
     marginTop: SPACING.xs,
   },
 

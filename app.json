@@ -52,6 +52,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-apple-authentication",
+      "react-native-iap",
       [
         "@sentry/react-native/expo",
         {

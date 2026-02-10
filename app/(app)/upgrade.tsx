@@ -1,5 +1,4 @@
 // Upgrade to Premium - Dedicated page
-// Shows both monthly and yearly options clearly
 
 import React, { useState } from 'react';
 import {
@@ -13,7 +12,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../src/constants/theme';
@@ -46,22 +44,38 @@ export default function UpgradePage() {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeStore();
   const router = useRouter();
-  const { isPremium, purchaseYearly, restorePurchases } = useSubscription();
+  const { isPremium, purchaseYearly, restorePurchases, product } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
-  const yearlyPrice = SUBSCRIPTION_TIERS.premium.price.yearly;
+  // Use live price from Apple, fall back to tier constant
+  const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.yearly.toFixed(2)}`;
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const success = await purchaseYearly();
+      const result = await purchaseYearly();
 
-      if (success) {
-        Alert.alert(
-          'Welcome to Premium!',
-          'Your subscription is now active. Enjoy unlimited access to all features!',
-          [{ text: 'Get Started', onPress: () => router.replace('/(app)') }]
-        );
+      switch (result.status) {
+        case 'success':
+          Alert.alert(
+            'Welcome to Premium!',
+            'Your subscription is now active. Enjoy unlimited access to all features!',
+            [{ text: 'Get Started', onPress: () => router.replace('/(app)') }]
+          );
+          break;
+        case 'cancelled':
+          // User dismissed — do nothing
+          break;
+        case 'pending':
+          Alert.alert(
+            'Purchase Pending',
+            'Your purchase is awaiting approval. Premium features will unlock once approved.'
+          );
+          break;
+        case 'error':
+          Alert.alert('Purchase Failed', result.message);
+          break;
       }
     } catch (error) {
       Alert.alert('Purchase Failed', 'Please try again or contact support.');
@@ -71,7 +85,7 @@ export default function UpgradePage() {
   };
 
   const handleRestore = async () => {
-    setIsLoading(true);
+    setIsRestoring(true);
     try {
       const success = await restorePurchases();
       if (success) {
@@ -82,7 +96,7 @@ export default function UpgradePage() {
     } catch (error) {
       Alert.alert('Restore Failed', 'Please try again.');
     } finally {
-      setIsLoading(false);
+      setIsRestoring(false);
     }
   };
 
@@ -110,7 +124,6 @@ export default function UpgradePage() {
           <Pressable
             style={styles.manageButton}
             onPress={() => {
-              // Open App Store subscription management
               Linking.openURL('https://apps.apple.com/account/subscriptions');
             }}
           >
@@ -151,15 +164,49 @@ export default function UpgradePage() {
           </Text>
         </View>
 
-        {/* Subscription Info */}
+        {/* Subscription Plan Card */}
         <View style={styles.subscriptionInfo}>
           <Text style={styles.subscriptionName}>MemoryAisle Premium</Text>
           <View style={styles.priceRow}>
-            <Text style={styles.planPrice}>${yearlyPrice.toFixed(2)}</Text>
+            <Text style={styles.planPrice}>{displayPrice}</Text>
             <Text style={styles.planPeriod}>/year</Text>
           </View>
+          <Text style={styles.trialText}>Includes 10-day free trial</Text>
           <Text style={styles.subscriptionDetails}>Yearly auto-renewable subscription</Text>
-          <Text style={styles.monthlyBreakdown}>Just $3.99/month</Text>
+
+          {/* Subscribe Button */}
+          <Pressable
+            style={[styles.planCtaButton, (isLoading || isRestoring) && styles.ctaButtonDisabled]}
+            onPress={handleSubscribe}
+            disabled={isLoading || isRestoring}
+            accessibilityRole="button"
+            accessibilityLabel={`Subscribe for ${displayPrice} per year with 10-day free trial`}
+          >
+            <LinearGradient
+              colors={isLoading ? ['#CCCCCC', '#AAAAAA'] : [COLORS.gold.light, COLORS.gold.base]}
+              style={StyleSheet.absoluteFill}
+            />
+            {isLoading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.ctaText}>Start Free Trial</Text>
+            )}
+          </Pressable>
+
+          {/* Restore */}
+          <Pressable
+            onPress={handleRestore}
+            style={styles.restoreButton}
+            disabled={isLoading || isRestoring}
+            accessibilityRole="button"
+            accessibilityLabel="Restore previous purchases"
+          >
+            {isRestoring ? (
+              <ActivityIndicator color={COLORS.text.secondary} size="small" />
+            ) : (
+              <Text style={styles.restoreText}>Restore Purchases</Text>
+            )}
+          </Pressable>
         </View>
 
         {/* Features */}
@@ -198,33 +245,11 @@ export default function UpgradePage() {
             .
           </Text>
           <Text style={styles.cancelText}>
-            Payment will be charged to your Apple ID. Subscription automatically renews at ${yearlyPrice.toFixed(2)}/year unless canceled at least 24 hours before the end of the current period. Manage subscriptions in your Apple ID account settings.
+            Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/year unless canceled at least 24 hours before the end of the current period. Manage subscriptions in your Apple ID account settings.
           </Text>
         </View>
       </ScrollView>
 
-      {/* Fixed CTA Button */}
-      <View style={[styles.ctaContainer, { paddingBottom: insets.bottom + SPACING.md }]}>
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-        <Pressable
-          style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
-          onPress={handleSubscribe}
-          disabled={isLoading}
-        >
-          <LinearGradient
-            colors={isLoading ? ['#CCCCCC', '#AAAAAA'] : [COLORS.gold.light, COLORS.gold.base]}
-            style={StyleSheet.absoluteFill}
-          />
-          {isLoading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.ctaText}>Subscribe Now - ${yearlyPrice.toFixed(2)}/year</Text>
-          )}
-        </Pressable>
-        <Pressable onPress={handleRestore} style={styles.restoreButton}>
-          <Text style={styles.restoreText}>Restore Purchases</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -328,11 +353,11 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     marginLeft: 4,
   },
-  monthlyBreakdown: {
+  trialText: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.success,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
   },
 
   // Features
@@ -386,23 +411,15 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
 
-  // CTA
-  ctaContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  ctaButton: {
-    height: 56,
+  // CTA inside plan card
+  planCtaButton: {
+    width: '100%',
+    height: 52,
     borderRadius: BORDER_RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    marginTop: SPACING.lg,
   },
   ctaText: {
     fontSize: FONT_SIZES.lg,

@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.lg,
-    paddingBottom: 120,
+    paddingBottom: 230,
   },
   header: {
     marginBottom: SPACING.lg,

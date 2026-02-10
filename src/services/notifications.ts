@@ -68,7 +68,7 @@ class NotificationService {
       // Get push token (only on physical devices)
       if (Device.isDevice) {
         const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: process.env.EXPO_PROJECT_ID || 'memoryaisle',
+          projectId: '6224c734-c82d-4852-848b-3ef0fde9e8f4',
         });
         this.expoPushToken = tokenData.data;
         logger.log('Push token:', this.expoPushToken);

@@ -1,5 +1,8 @@
 // useSubscription hook
-// Provides subscription state and feature gating throughout the app
+// Provides subscription state, feature gating, and purchase actions.
+//
+// The client reads subscription status from Supabase (RLS-protected SELECT).
+// Writes only happen server-side via Edge Functions after Apple verification.
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../stores/authStore';
@@ -7,26 +10,24 @@ import {
   iapService,
   SubscriptionInfo,
   FeatureKey,
-  BillingInterval,
   SUBSCRIPTION_TIERS,
-  IAP_PRODUCTS,
+  IAPProduct,
+  type PurchaseResult,
 } from '../services/iap';
 import { supabase } from '../services/supabase';
 import { adminService } from '../services/admin';
 
 interface UseSubscriptionReturn {
-  // Subscription state
   subscription: SubscriptionInfo | null;
   isLoading: boolean;
   isPremium: boolean;
+  product: IAPProduct | null;
 
-  // Feature gating
   canAccess: (feature: FeatureKey) => boolean;
   getLimit: (feature: FeatureKey) => number;
 
-  // Actions
   refresh: () => Promise<void>;
-  purchaseYearly: () => Promise<boolean>;
+  purchaseYearly: () => Promise<PurchaseResult>;
   restorePurchases: () => Promise<boolean>;
 }
 
@@ -34,13 +35,14 @@ export function useSubscription(): UseSubscriptionReturn {
   const { user } = useAuthStore();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [product, setProduct] = useState<IAPProduct | null>(null);
 
-  // Initialize IAP on mount
+  // Fetch product info from Apple on mount
   useEffect(() => {
-    iapService.initialize();
+    iapService.getSubscriptionProduct().then(setProduct);
   }, []);
 
-  // Fetch subscription on mount and when user changes
+  // Fetch subscription from database (read-only)
   const fetchSubscription = useCallback(async () => {
     if (!user?.id) {
       setSubscription({ tier: 'free', status: 'none' });
@@ -50,7 +52,7 @@ export function useSubscription(): UseSubscriptionReturn {
 
     setIsLoading(true);
     try {
-      // Check if user is admin/founder - they get premium for free
+      // Admin and founder family get premium for free
       const isAdmin = await adminService.isAdmin();
       if (isAdmin) {
         setSubscription({ tier: 'premium', status: 'active' });
@@ -58,7 +60,6 @@ export function useSubscription(): UseSubscriptionReturn {
         return;
       }
 
-      // Check if user is founder family member - they get premium for free
       const { data: isFounderFamily } = await supabase.rpc('is_founder_family');
       if (isFounderFamily) {
         setSubscription({ tier: 'premium', status: 'active' });
@@ -76,12 +77,11 @@ export function useSubscription(): UseSubscriptionReturn {
     }
   }, [user?.id]);
 
-  // Initial fetch
   useEffect(() => {
     fetchSubscription();
   }, [fetchSubscription]);
 
-  // Subscribe to realtime changes
+  // Subscribe to realtime DB changes (server writes trigger UI updates)
   useEffect(() => {
     if (!user?.id) return;
 
@@ -106,10 +106,8 @@ export function useSubscription(): UseSubscriptionReturn {
     };
   }, [user?.id, fetchSubscription]);
 
-  // Check if user is premium
   const isPremium = subscription ? iapService.isPremium(subscription) : false;
 
-  // Feature access check
   const canAccess = useCallback(
     (feature: FeatureKey): boolean => {
       if (!subscription) return false;
@@ -118,7 +116,6 @@ export function useSubscription(): UseSubscriptionReturn {
     [subscription]
   );
 
-  // Get feature limit
   const getLimit = useCallback(
     (feature: FeatureKey): number => {
       if (!subscription) return SUBSCRIPTION_TIERS.free.features[feature] as number;
@@ -127,23 +124,18 @@ export function useSubscription(): UseSubscriptionReturn {
     [subscription]
   );
 
-  // Purchase yearly subscription
-  const purchaseYearly = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) return false;
-    const success = await iapService.purchaseSubscription(
-      IAP_PRODUCTS.PREMIUM_YEARLY,
-      user.id
-    );
-    if (success) {
-      setTimeout(() => fetchSubscription(), 2000);
+  // Purchase — server verifies and writes status
+  const purchaseYearly = useCallback(async (): Promise<PurchaseResult> => {
+    if (!user?.id) {
+      return { status: 'error', message: 'Please sign in to subscribe.' };
     }
-    return success;
-  }, [user?.id, fetchSubscription]);
+    return iapService.purchaseSubscription();
+  }, [user?.id]);
 
-  // Restore purchases
+  // Restore — server verifies and writes status
   const restorePurchases = useCallback(async (): Promise<boolean> => {
     if (!user?.id) return false;
-    const success = await iapService.restorePurchases(user.id);
+    const success = await iapService.restorePurchases();
     if (success) {
       await fetchSubscription();
     }
@@ -154,6 +146,7 @@ export function useSubscription(): UseSubscriptionReturn {
     subscription,
     isLoading,
     isPremium,
+    product,
     canAccess,
     getLimit,
     refresh: fetchSubscription,
@@ -210,7 +203,6 @@ export function useFeatureQuota(feature: 'miraQueriesPerDay' | 'recipesPerDay') 
     if (!user?.id) return;
     const newCount = await iapService.incrementUsage(user.id, feature);
 
-    // Update local state
     setUsage(prev => ({
       ...prev,
       used: newCount,

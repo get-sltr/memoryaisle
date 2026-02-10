@@ -9,6 +9,7 @@ import { getCurrentUser, getUserHousehold } from '../src/services/auth';
 import { errorTracking } from '../src/services/errorTracking';
 import { notificationService } from '../src/services/notifications';
 import { geofenceService } from '../src/services/geofence';
+import { iapService } from '../src/services/iap';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -21,6 +22,27 @@ export default function RootLayout() {
   const router = useRouter();
   const notificationsInitialized = useRef(false);
   const geofenceInitialized = useRef(false);
+  const iapInitialized = useRef(false);
+
+  // Initialize In-App Purchases (non-blocking)
+  async function initIAP(userId: string) {
+    if (iapInitialized.current) return;
+    iapInitialized.current = true;
+
+    try {
+      const connected = await iapService.initialize();
+      if (connected) {
+        // Start listening for transactions (renewals, deferred purchases, etc.)
+        iapService.startTransactionListener(userId, () => {
+          // Subscription status changed — Supabase realtime will handle UI updates
+        });
+        // Sync subscription with Apple via server verification on launch
+        iapService.syncSubscriptionOnLaunch().catch(() => {});
+      }
+    } catch (error) {
+      console.warn('IAP init failed:', error);
+    }
+  }
 
   // Initialize geofencing with notification callbacks
   async function initGeofencing(householdId: string) {
@@ -161,10 +183,10 @@ export default function RootLayout() {
           const household = await getUserHousehold();
           setHousehold(household);
 
-          // Initialize notifications for logged-in user
+          // Initialize services for logged-in user (all non-blocking)
+          initIAP(user.id);
           initNotifications(user.id);
 
-          // Initialize geofencing if user has a household
           if (household?.id) {
             initGeofencing(household.id);
           }
@@ -188,10 +210,10 @@ export default function RootLayout() {
             const household = await getUserHousehold();
             setHousehold(household);
 
-            // Initialize notifications after sign-in
+            // Initialize services after sign-in (all non-blocking)
+            initIAP(user.id);
             initNotifications(user.id);
 
-            // Initialize geofencing if user has a household
             if (household?.id) {
               initGeofencing(household.id);
             }
@@ -199,9 +221,11 @@ export default function RootLayout() {
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setHousehold(null);
-          // Reset notification state on sign out
+          // Reset service state on sign out
+          iapInitialized.current = false;
           notificationsInitialized.current = false;
           geofenceInitialized.current = false;
+          iapService.removeTransactionListeners();
           notificationService.removeNotificationListeners();
           geofenceService.stopMonitoring();
         }
@@ -210,6 +234,7 @@ export default function RootLayout() {
 
     return () => {
       subscription.unsubscribe();
+      iapService.disconnect();
       notificationService.removeNotificationListeners();
       geofenceService.stopMonitoring();
     };
