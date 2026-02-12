@@ -12,6 +12,7 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -313,9 +314,19 @@ export default function SignUp() {
               {/* Terms */}
               <Text style={styles.termsText}>
                 By creating an account, you agree to our{' '}
-                <Text style={styles.termsLink}>Terms of Service</Text>
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
+                >
+                  Terms of Use
+                </Text>
                 {' '}and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}
+                >
+                  Privacy Policy
+                </Text>
               </Text>
             </View>
           </View>

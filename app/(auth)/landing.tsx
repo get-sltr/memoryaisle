@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Easing,
+  Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -512,6 +513,21 @@ export default function LandingScreen() {
         <Text style={styles.footerText}>
           Smart lists • Voice assistant • Family sharing
         </Text>
+        <View style={styles.legalLinks}>
+          <Text
+            style={styles.legalLinkText}
+            onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
+          >
+            Terms of Use
+          </Text>
+          <Text style={styles.legalSeparator}>•</Text>
+          <Text
+            style={styles.legalLinkText}
+            onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}
+          >
+            Privacy Policy
+          </Text>
+        </View>
         <Text style={styles.companyName}>SLTR DIGITAL LLC</Text>
         <Text style={styles.companyTagline}>INTELLIGENT | INNOVATIVE | INTUITIVE</Text>
       </Animated.View>
@@ -990,5 +1006,20 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.text.tertiary,  // Updated from removed 'muted'
     letterSpacing: 1.5,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  legalLinkText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gold.dark,
+    fontWeight: '500',
+  },
+  legalSeparator: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.text.secondary,
   },
 });

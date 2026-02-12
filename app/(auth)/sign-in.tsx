@@ -12,6 +12,7 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -285,6 +286,24 @@ export default function SignIn() {
                 </View>
               </Pressable>
 
+              {/* Terms */}
+              <Text style={styles.termsText}>
+                By signing in, you agree to our{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
+                >
+                  Terms of Use
+                </Text>
+                {' '}and{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
+
             </View>
           </View>
 
@@ -524,6 +543,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  // Terms
+  termsText: {
+    fontSize: FONT_SIZES.xs + 1,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: SPACING.lg,
+  },
+  termsLink: {
+    color: COLORS.gold.dark,
+    fontWeight: '500',
   },
   // Footer
   footer: {

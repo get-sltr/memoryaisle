@@ -11,6 +11,7 @@ import {
   ScrollView,
   Image,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -212,9 +213,19 @@ export default function PhoneSignIn() {
           <View style={styles.footer}>
             <Text style={styles.footerText}>
               By continuing, you agree to our{' '}
-              <Text style={styles.footerLink}>Terms of Service</Text>
+              <Text
+                style={styles.footerLink}
+                onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
+              >
+                Terms of Use
+              </Text>
               {' '}and{' '}
-              <Text style={styles.footerLink}>Privacy Policy</Text>
+              <Text
+                style={styles.footerLink}
+                onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}
+              >
+                Privacy Policy
+              </Text>
             </Text>
           </View>
         </ScrollView>
