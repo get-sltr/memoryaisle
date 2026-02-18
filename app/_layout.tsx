@@ -34,7 +34,7 @@ export default function RootLayout() {
       if (connected) {
         // Start listening for transactions (renewals, deferred purchases, etc.)
         iapService.startTransactionListener(userId, () => {
-          // Subscription status changed — Supabase realtime will handle UI updates
+          iapService.syncSubscriptionOnLaunch().catch(() => {});
         });
         // Sync subscription with Apple via server verification on launch
         iapService.syncSubscriptionOnLaunch().catch(() => {});

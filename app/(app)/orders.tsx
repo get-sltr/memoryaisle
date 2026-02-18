@@ -147,7 +147,7 @@ export default function OrdersPage() {
   };
 
   const renderOrder = ({ item }: { item: Order }) => (
-    <Pressable style={[styles.orderCard, { backgroundColor: cardBg }]}>
+    <Pressable style={[styles.orderCard, { backgroundColor: cardBg }]} onPress={() => router.push({ pathname: "/(app)/order-detail", params: { storeName: item.store_name, date: item.created_at } })}>
       <View style={styles.orderIcon}>
         <Text style={styles.orderIconText}>🧾</Text>
       </View>

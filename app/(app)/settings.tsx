@@ -534,6 +534,12 @@ export default function SettingsScreen() {
             onPress={() => router.push('/(app)/prices')}
           />
           <SettingRow
+            icon="📈"
+            title="Purchase Reports"
+            subtitle="Spending analytics & export"
+            onPress={() => router.push('/(app)/reports')}
+          />
+          <SettingRow
             icon="🗑️"
             title="Delete Account"
             subtitle="Permanently delete your account and data"

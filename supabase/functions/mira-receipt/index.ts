@@ -7,6 +7,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Keyword-based item categorization (6 report buckets)
+// Maps to: dairy, produce, meat, bakery, pantry, other
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  dairy: ['milk', 'cheese', 'butter', 'yogurt', 'egg', 'eggs', 'cream', 'cheddar', 'mozzarella'],
+  produce: ['apple', 'banana', 'orange', 'lettuce', 'tomato', 'potato', 'onion', 'carrot', 'broccoli', 'spinach', 'avocado', 'cucumber', 'pepper', 'garlic', 'lemon', 'lime', 'strawberry', 'blueberry', 'grape', 'mango', 'celery', 'kale', 'mushroom', 'zucchini', 'corn', 'pear', 'peach', 'melon', 'berry'],
+  meat: ['beef', 'steak', 'pork', 'bacon', 'ham', 'sausage', 'lamb', 'ground', 'chicken', 'turkey', 'duck', 'fish', 'salmon', 'tuna', 'shrimp', 'crab', 'lobster', 'cod', 'tilapia', 'deli', 'salami', 'prosciutto', 'pastrami'],
+  bakery: ['bread', 'bagel', 'muffin', 'croissant', 'cake', 'cookie', 'donut', 'roll', 'baguette', 'tortilla', 'pita'],
+  pantry: ['rice', 'pasta', 'flour', 'sugar', 'oil', 'sauce', 'soup', 'beans', 'canned', 'spice', 'frozen', 'ice cream', 'pizza', 'water', 'juice', 'soda', 'tea', 'wine', 'beer', 'cereal', 'oatmeal', 'pancake', 'waffle', 'syrup', 'coffee', 'granola', 'chips', 'candy', 'chocolate', 'popcorn', 'nuts', 'crackers', 'salsa', 'soy', 'curry', 'noodle', 'ramen', 'salt', 'vinegar', 'honey', 'jam', 'jelly', 'ketchup', 'mustard'],
+};
+
+function categorizeItem(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (lower.includes(keyword)) return category;
+    }
+  }
+  return 'other';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -128,6 +148,7 @@ Rules:
           item_name: item.name,
           price: item.price,
           store_name: extractedStoreName,
+          category: categorizeItem(item.name),
           purchased_at: new Date().toISOString(),
           source: 'receipt_ocr'
         }));

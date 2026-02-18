@@ -97,6 +97,12 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
+          name="reports"
+          options={{
+            title: 'Reports',
+          }}
+        />
+        <Tabs.Screen
           name="prices"
           options={{
             title: 'Prices',

@@ -11,7 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../constants/theme';
 
-const SWIPE_THRESHOLD = 0.7; // 70% of width to trigger
+const SWIPE_THRESHOLD = 0.5; // 70% of width to trigger
 
 interface SwipeButtonProps {
   onSwipeComplete: () => void;
@@ -61,7 +61,7 @@ export function SwipeButton({
           Animated.spring(translateX, {
             toValue: currentMaxSlide,
             useNativeDriver: true,
-            friction: 8,
+            friction: 5,
           }).start(() => {
             setCompleted(true);
             onSwipeComplete();
@@ -71,7 +71,7 @@ export function SwipeButton({
           Animated.spring(translateX, {
             toValue: 0,
             useNativeDriver: true,
-            friction: 8,
+            friction: 5,
           }).start();
         }
       },

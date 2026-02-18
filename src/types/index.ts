@@ -236,6 +236,7 @@ export interface PurchaseHistory {
   item_name: string;
   price: number | null;
   store_name: string | null;
+  category: string;
   purchased_at: string;
   source: 'receipt_ocr' | 'plaid' | 'loyalty';
   created_at: string;

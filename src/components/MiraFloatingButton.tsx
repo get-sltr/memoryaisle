@@ -22,6 +22,7 @@ import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS, HIG } from '../con
 import { useAuthStore } from '../stores/authStore';
 import { mira, MiraRecipe, MiraMealPlan } from '../services/mira';
 import { getActiveList, addItem } from '../services/lists';
+import { saveMiraMealPlan } from '../services/mealPlans';
 import { SwipeButton } from './SwipeButton';
 import { supabase } from '../services/supabase';
 
@@ -40,7 +41,7 @@ interface Message {
 
 export function MiraFloatingButton() {
   const insets = useSafeAreaInsets();
-  const { household } = useAuthStore();
+  const { household, user } = useAuthStore();
 
   // Position state - starts at bottom right
   const position = useRef(new Animated.ValueXY({
@@ -269,6 +270,27 @@ export function MiraFloatingButton() {
     }]);
   }, [household?.id]);
 
+  const handleSaveMealPlan = useCallback(async (mealPlan: MiraMealPlan) => {
+    if (!household?.id) return;
+
+    try {
+      const saved = await saveMiraMealPlan(household.id, mealPlan, user?.id);
+      const mealCount = saved.planned_meals?.length ?? 0;
+
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Saved "${mealPlan.name}" to your meal plan! ${mealCount} meals added across ${mealPlan.duration} days. Check the Plan tab to see it on your calendar.`,
+      }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Sorry, I couldn't save the meal plan. Please try again.`,
+      }]);
+    }
+  }, [household?.id, user?.id]);
+
   return (
     <>
       {/* Floating Button */}
@@ -478,6 +500,14 @@ export function MiraFloatingButton() {
                         label="Add Shopping List"
                         completedLabel="Added to List!"
                         icon="✓"
+                      />
+
+                      {/* Save to Plan Calendar */}
+                      <SwipeButton
+                        onSwipeComplete={() => handleSaveMealPlan(message.mealPlan!)}
+                        label="Save to Plan"
+                        completedLabel="Saved to Plan!"
+                        icon="📅"
                       />
 
                       {/* Tips */}

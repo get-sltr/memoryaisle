@@ -30,7 +30,6 @@ import {
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
-  SHADOWS,
 } from '../../src/constants/theme';
 import type { MiraMealPlan } from '../../src/services/mira';
 
@@ -177,11 +176,6 @@ export default function MealPlansScreen() {
     }
   }, [subscriptionLoading, hasAccess]);
 
-  const handleAskMira = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/mira');
-  }, []);
-
   const handleAddToShoppingList = useCallback((items: string[]) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     // TODO: Add items to shopping list
@@ -202,16 +196,7 @@ export default function MealPlansScreen() {
           <Text style={styles.subtitle}>Powered by Mira</Text>
         </View>
 
-        {hasAccess && (
-          <Pressable style={styles.addButton} onPress={handleAskMira}>
-            <LinearGradient
-              colors={[AURORA_PALETTES.northern.colors[0], AURORA_PALETTES.northern.colors[2]]}
-              style={StyleSheet.absoluteFill}
-            />
-            <Text style={styles.addButtonText}>+ New</Text>
-          </Pressable>
-        )}
-        {!hasAccess && <View style={styles.addButton} />}
+        <View style={{ width: 44 }} />
       </View>
 
       {/* Tabs */}
@@ -351,20 +336,6 @@ export default function MealPlansScreen() {
         )}
       </ScrollView>
 
-      {/* Floating Ask Mira Button - only show for premium users */}
-      {hasAccess && (
-        <Pressable style={styles.floatingButton} onPress={handleAskMira}>
-          <LinearGradient
-            colors={[AURORA_PALETTES.cosmic.colors[0], AURORA_PALETTES.cosmic.colors[2]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <Text style={styles.floatingButtonIcon}>✨</Text>
-          <Text style={styles.floatingButtonText}>Ask Mira</Text>
-        </Pressable>
-      )}
-
       {/* Paywall for free users */}
       <PaywallPrompt
         visible={showPaywall}
@@ -417,17 +388,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
-  },
-  addButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-  },
-  addButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.white,
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -636,26 +596,5 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
     maxWidth: 250,
-  },
-  floatingButton: {
-    position: 'absolute',
-    bottom: 30,
-    right: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.xl,
-    overflow: 'hidden',
-    ...SHADOWS.glassElevated,
-  },
-  floatingButtonIcon: {
-    fontSize: 18,
-  },
-  floatingButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.white,
   },
 });
