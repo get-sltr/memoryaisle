@@ -674,13 +674,7 @@ export default function SettingsScreen() {
             title="Rate MemoryAisle"
             subtitle="Love the app? Leave a review!"
             onPress={() => {
-              // TODO: Replace APP_ID with actual Apple App ID from App Store Connect after first publish
-              const APP_ID = '';
-              if (APP_ID) {
-                Linking.openURL(`https://apps.apple.com/app/memoryaisle/id${APP_ID}?action=write-review`);
-              } else {
-                Alert.alert('Coming Soon', 'Rating will be available once the app is published on the App Store.');
-              }
+              Linking.openURL('https://apps.apple.com/app/memoryaisle/id6757601958?action=write-review');
             }}
           />
         </SectionCard>
