@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,11 @@ import {
   type HolidayOccurrence,
   type HolidayCategory,
 } from '../../src/utils/holidays';
+import {
+  getMealPlansForDateRange,
+  getMealsForDate,
+  type PlannedMeal,
+} from '../../src/services/mealPlans';
 import type { CulturalPreference, WeeklyTradition } from '../../src/types';
 import {
   COLORS,
@@ -62,6 +67,8 @@ export default function CalendarScreen() {
   const familyProfile = household?.familyProfile || {};
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'upcoming'>('upcoming');
+  const [monthMeals, setMonthMeals] = useState<PlannedMeal[]>([]);
+  const [todayMeals, setTodayMeals] = useState<PlannedMeal[]>([]);
 
   // Check if user has full calendar access
   const hasFullAccess = canAccess('smartCalendar');
@@ -69,6 +76,26 @@ export default function CalendarScreen() {
   // Get family's cultural preferences
   const culturalPrefs = familyProfile.culturalPreferences || ['secular'];
   const weeklyTraditions = familyProfile.weeklyTraditions || [];
+
+  // Fetch meals for the selected month
+  useEffect(() => {
+    if (!household?.id) return;
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth();
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    getMealPlansForDateRange(household.id, start, end)
+      .then(setMonthMeals)
+      .catch(() => setMonthMeals([]));
+  }, [household?.id, selectedDate.getFullYear(), selectedDate.getMonth()]);
+
+  // Fetch today's meals for the upcoming view
+  useEffect(() => {
+    if (!household?.id) return;
+    getMealsForDate(household.id, new Date())
+      .then(setTodayMeals)
+      .catch(() => setTodayMeals([]));
+  }, [household?.id]);
 
   // Map cultural preferences to holiday categories
   const relevantCategories = useMemo(() => {
@@ -273,9 +300,11 @@ export default function CalendarScreen() {
   // Check if a day has events
   const getDayEvents = (day: number) => {
     const date = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
+    const dateStr = date.toISOString().split('T')[0];
     const holidays = monthHolidays.filter(h => h.date.getDate() === day);
     const traditions = weeklyTraditions.filter(t => t.dayOfWeek === date.getDay() && t.isActive);
-    return { holidays, traditions };
+    const meals = monthMeals.filter(m => m.date === dateStr);
+    return { holidays, traditions, meals };
   };
 
   return (
@@ -349,6 +378,36 @@ export default function CalendarScreen() {
 
         {viewMode === 'upcoming' ? (
           <>
+            {/* Today's Planned Meals */}
+            {todayMeals.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>{'\u{1F372}'} Today's Meals</Text>
+                {todayMeals.map((meal) => (
+                  <View key={meal.id} style={styles.eventCard}>
+                    <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                    <LinearGradient
+                      colors={['rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.3)']}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <View style={styles.eventCardBorder} />
+                    <View style={styles.eventCardContent}>
+                      <View style={[styles.mealTypeBadge, { backgroundColor: 'rgba(0, 150, 136, 0.15)' }]}>
+                        <Text style={styles.mealTypeText}>
+                          {meal.meal_type.charAt(0).toUpperCase() + meal.meal_type.slice(1)}
+                        </Text>
+                      </View>
+                      <View style={styles.eventInfo}>
+                        <Text style={styles.eventName}>{meal.name}</Text>
+                        {meal.prep_time && (
+                          <Text style={styles.eventDate}>Prep: {meal.prep_time}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* This Week's Traditions */}
             {thisWeekTraditions.length > 0 && (
               <View style={styles.section}>
@@ -455,7 +514,7 @@ export default function CalendarScreen() {
                     return <View key={`empty-${index}`} style={styles.calendarDay} />;
                   }
                   const events = getDayEvents(day);
-                  const hasEvents = events.holidays.length > 0 || events.traditions.length > 0;
+                  const hasEvents = events.holidays.length > 0 || events.traditions.length > 0 || events.meals.length > 0;
                   const isToday = new Date().getDate() === day &&
                     new Date().getMonth() === selectedDate.getMonth() &&
                     new Date().getFullYear() === selectedDate.getFullYear();
@@ -473,6 +532,7 @@ export default function CalendarScreen() {
                           const eventNames = [
                             ...events.holidays.map(h => h.name),
                             ...events.traditions.map(t => t.name),
+                            ...events.meals.map(m => `${m.meal_type}: ${m.name}`),
                           ];
                           Alert.alert(
                             `${MONTHS[selectedDate.getMonth()]} ${day}`,
@@ -495,6 +555,9 @@ export default function CalendarScreen() {
                           {events.traditions.length > 0 && (
                             <View style={[styles.eventDot, styles.eventDotTradition]} />
                           )}
+                          {events.meals.length > 0 && (
+                            <View style={[styles.eventDot, styles.eventDotMeal]} />
+                          )}
                         </View>
                       )}
                     </Pressable>
@@ -510,7 +573,11 @@ export default function CalendarScreen() {
                 </View>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, styles.eventDotTradition]} />
-                  <Text style={styles.legendText}>Family Tradition</Text>
+                  <Text style={styles.legendText}>Tradition</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.eventDotMeal]} />
+                  <Text style={styles.legendText}>Meal</Text>
                 </View>
               </View>
             </View>
@@ -970,6 +1037,19 @@ const styles = StyleSheet.create({
   },
   eventDotTradition: {
     backgroundColor: '#4CAF50',
+  },
+  eventDotMeal: {
+    backgroundColor: '#009688',
+  },
+  mealTypeBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  mealTypeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    color: '#00796B',
   },
   legend: {
     flexDirection: 'row',

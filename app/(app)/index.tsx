@@ -15,6 +15,7 @@ import {
   UIManager,
   Platform,
   Animated,
+  Dimensions,
 } from 'react-native';
 
 // Enable LayoutAnimation for Android
@@ -27,6 +28,7 @@ import QRCode from 'react-native-qrcode-svg';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { StoreArrivalBanner } from '../../src/components/StoreArrivalBanner';
@@ -37,6 +39,9 @@ import { signOut } from '../../src/services/auth';
 import { router as appRouter } from 'expo-router';
 import {
   getActiveList,
+  getAllLists,
+  createList,
+  archiveList,
   getListItems,
   getCompletedCount,
   addItem,
@@ -45,6 +50,7 @@ import {
   subscribeToList,
 } from '../../src/services/lists';
 import { mira } from '../../src/services/mira';
+import { useWakeWord } from '../../src/services/wakeWord';
 import {
   COLORS,
   FONTS,
@@ -117,6 +123,13 @@ export default function MainList() {
   const [showMenu, setShowMenu] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [keywordsReady, setKeywordsReady] = useState(false);
+  const [allLists, setAllLists] = useState<GroceryListType[]>([]);
+  const [showListPicker, setShowListPicker] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingPage, setOnboardingPage] = useState(0);
+
+  // Wake word detection
+  const { startWakeWord, stopWakeWord, pauseWakeWord, resumeWakeWord } = useWakeWord();
 
   // Guard for account-required actions - prompts guest users to sign up
   const requireAuth = (action: () => void) => {
@@ -197,7 +210,44 @@ export default function MainList() {
     preloadKeywords().then(() => {
       setKeywordsReady(true);
     });
+    // Check if user has seen onboarding
+    AsyncStorage.getItem('hasSeenOnboarding').then((value) => {
+      if (!value) setShowOnboarding(true);
+    });
   }, []);
+
+  // Refs for wake word callback to avoid re-creating the listener
+  const listRef = useRef(list);
+  const isDictatingRef = useRef(isDictating);
+  const isProcessingRef = useRef(isProcessingDictation);
+  useEffect(() => { listRef.current = list; }, [list]);
+  useEffect(() => { isDictatingRef.current = isDictating; }, [isDictating]);
+  useEffect(() => { isProcessingRef.current = isProcessingDictation; }, [isProcessingDictation]);
+
+  // Wake word detection — auto-start dictation when "Hey Mira" detected
+  useEffect(() => {
+    startWakeWord(async () => {
+      if (!listRef.current || isDictatingRef.current || isProcessingRef.current) return;
+      pauseWakeWord();
+      const started = await mira.startListening();
+      if (started) {
+        setIsDictating(true);
+        setMiraStatus('Listening... tap mic when done');
+      } else {
+        resumeWakeWord();
+      }
+    });
+    return () => stopWakeWord();
+  }, []);
+
+  // Pause wake word during dictation, resume after
+  useEffect(() => {
+    if (isDictating || isProcessingDictation) {
+      pauseWakeWord();
+    } else {
+      resumeWakeWord();
+    }
+  }, [isDictating, isProcessingDictation]);
 
   // Geofence monitoring
   useEffect(() => {
@@ -286,10 +336,85 @@ export default function MainList() {
         const doneCount = await getCompletedCount(activeList.id);
         setCompletedItems(doneCount);
       }
+      // Load all lists for the picker
+      const lists = await getAllLists(household.id);
+      setAllLists(lists);
       setLoading(false);
     }
     loadList();
   }, [household]);
+
+  // Switch to a different list
+  const switchToList = useCallback(async (targetList: GroceryListType) => {
+    setShowListPicker(false);
+    setLoading(true);
+    setList(targetList);
+    const listItems = await getListItems(targetList.id);
+    setItems(listItems);
+    const doneCount = await getCompletedCount(targetList.id);
+    setCompletedItems(doneCount);
+    setLoading(false);
+  }, []);
+
+  // Create a new list
+  const handleCreateList = useCallback(() => {
+    if (!household) return;
+    Alert.prompt(
+      'New List',
+      'Enter a name for your new list:',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create',
+          onPress: async (name?: string) => {
+            if (!name?.trim()) return;
+            const newList = await createList(household.id, name.trim());
+            if (newList) {
+              setAllLists(prev => [newList, ...prev]);
+              switchToList(newList);
+            } else {
+              Alert.alert('Error', 'Could not create list. Please try again.');
+            }
+          },
+        },
+      ],
+      'plain-text',
+      '',
+      'default'
+    );
+  }, [household, switchToList]);
+
+  // Archive the current list
+  const handleArchiveList = useCallback(async () => {
+    if (!list || !household) return;
+    if (allLists.length <= 1) {
+      Alert.alert('Cannot Archive', 'You need at least one list.');
+      return;
+    }
+    Alert.alert(
+      'Archive List',
+      `Archive "${list.name}"? You can still find it later.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await archiveList(list.id);
+            if (success) {
+              const remaining = allLists.filter(l => l.id !== list.id);
+              setAllLists(remaining);
+              if (remaining.length > 0) {
+                switchToList(remaining[0]);
+              }
+            } else {
+              Alert.alert('Error', 'Could not archive list.');
+            }
+          },
+        },
+      ]
+    );
+  }, [list, household, allLists, switchToList]);
 
   // Realtime subscription
   useEffect(() => {
@@ -360,7 +485,11 @@ export default function MainList() {
       }
       : undefined;
 
-    await addItem(list.id, itemName, allergyRecord);
+    const result = await addItem(list.id, itemName, allergyRecord);
+    if (!result) {
+      Alert.alert('Error', 'Could not add item. Please try again.');
+      return;
+    }
     setNewItemName('');
   };
 
@@ -372,6 +501,7 @@ export default function MainList() {
       const listItems = await getListItems(list.id);
       setItems(listItems);
       setCompletedItems((prev) => prev - 1);
+      Alert.alert('Error', 'Could not complete item. Please try again.');
     }
   }, [list]);
 
@@ -436,6 +566,26 @@ export default function MainList() {
             </Pressable>
           </View>
         </View>
+        {/* List Switcher Pill */}
+        <Pressable
+          style={styles.storeSlot}
+          onPress={() => setShowListPicker(true)}
+        >
+          <BlurView intensity={15} tint="light" style={styles.storeSlotBlur} />
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.25)']}
+            style={styles.storeSlotGradient}
+          />
+          <View style={styles.storeSlotBorder} />
+          <ListGlassIcon size={14} color={COLORS.gold.dark} />
+          <Text style={styles.storeSlotText}>
+            {list?.name || 'Shopping List'}
+          </Text>
+          {allLists.length > 1 && (
+            <Text style={styles.storeSlotArrow}>{'\u203A'}</Text>
+          )}
+        </Pressable>
+
         {/* Store Location Slot */}
         <Pressable
           style={styles.storeSlot}
@@ -1047,6 +1197,70 @@ export default function MainList() {
         </Pressable>
       </Modal>
 
+      {/* List Picker Modal */}
+      <Modal visible={showListPicker} transparent animationType="fade" onRequestClose={() => setShowListPicker(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowListPicker(false)}>
+          <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
+            <Pressable style={styles.qrCard} onPress={(e) => e.stopPropagation()}>
+              <BlurView intensity={70} tint="light" style={styles.qrCardBlur} />
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.3)', 'rgba(248, 250, 255, 0.2)']}
+                style={styles.qrCardGradient}
+              />
+              <View style={styles.qrCardBorder} />
+              <View style={styles.qrCardContent}>
+                <Text style={styles.qrTitle}>Your Lists</Text>
+                <Text style={styles.qrSubtitle}>Switch between lists or create a new one</Text>
+
+                <ScrollView style={styles.listPickerScroll} showsVerticalScrollIndicator={false}>
+                  {allLists.map((l) => (
+                    <Pressable
+                      key={l.id}
+                      style={[styles.listPickerItem, l.id === list?.id && styles.listPickerItemActive]}
+                      onPress={() => switchToList(l)}
+                    >
+                      <Text style={[styles.listPickerItemText, l.id === list?.id && styles.listPickerItemTextActive]}>
+                        {l.name}
+                      </Text>
+                      {l.id === list?.id && (
+                        <Text style={styles.listPickerCheck}>{'\u2713'}</Text>
+                      )}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                <Pressable style={styles.shareButton} onPress={handleCreateList}>
+                  <LinearGradient
+                    colors={[COLORS.gold.light, COLORS.gold.base]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.shareButtonGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 240, 200, 0.5)', 'rgba(255, 220, 150, 0)']}
+                    start={{ x: 0.2, y: 0 }}
+                    end={{ x: 0.8, y: 0.6 }}
+                    style={styles.shareButtonShine}
+                  />
+                  <View style={styles.shareButtonBorder} />
+                  <Text style={styles.shareButtonText}>+ New List</Text>
+                </Pressable>
+
+                {allLists.length > 1 && list && (
+                  <Pressable style={styles.closeButton} onPress={handleArchiveList}>
+                    <Text style={[styles.closeButtonText, { color: COLORS.error }]}>Archive Current List</Text>
+                  </Pressable>
+                )}
+
+                <Pressable style={styles.closeButton} onPress={() => setShowListPicker(false)}>
+                  <Text style={styles.closeButtonText}>Done</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </BlurView>
+        </Pressable>
+      </Modal>
+
       {/* Store Arrival Banner */}
       {arrivedStore && (
         <StoreArrivalBanner
@@ -1251,6 +1465,95 @@ export default function MainList() {
           </View>
         </View>
       )}
+
+      {/* Onboarding Modal */}
+      <Modal visible={showOnboarding} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.onboardingOverlay}>
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={styles.onboardingCard}>
+            <BlurView intensity={60} tint="light" style={styles.onboardingCardBlur} />
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.85)', 'rgba(250, 252, 255, 0.75)', 'rgba(248, 250, 255, 0.65)']}
+              style={styles.onboardingCardGradient}
+            />
+            <View style={styles.onboardingCardBorder} />
+
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onMomentumScrollEnd={(e) => {
+                const page = Math.round(e.nativeEvent.contentOffset.x / (Dimensions.get('window').width - 64));
+                setOnboardingPage(page);
+              }}
+              style={styles.onboardingScroll}
+            >
+              {/* Slide 1: Voice */}
+              <View style={styles.onboardingSlide}>
+                <View style={styles.onboardingIconCircle}>
+                  <VoiceIcon size={36} color={COLORS.gold.base} />
+                </View>
+                <Text style={styles.onboardingSlideTitle}>Add items by voice or text</Text>
+                <Text style={styles.onboardingSlideBody}>
+                  Tap the mic button and say your items, or type them in. Mira will understand natural language like "2 pounds of chicken."
+                </Text>
+              </View>
+
+              {/* Slide 2: Mira */}
+              <View style={styles.onboardingSlide}>
+                <View style={[styles.onboardingIconCircle, { backgroundColor: 'rgba(212, 175, 55, 0.2)' }]}>
+                  <Text style={{ fontSize: 36 }}>{'\u2728'}</Text>
+                </View>
+                <Text style={styles.onboardingSlideTitle}>Ask Mira anything</Text>
+                <Text style={styles.onboardingSlideBody}>
+                  Get recipe ideas, meal plans, and suggestions tailored to your family's dietary needs and preferences.
+                </Text>
+              </View>
+
+              {/* Slide 3: Family */}
+              <View style={styles.onboardingSlide}>
+                <View style={[styles.onboardingIconCircle, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
+                  <FamilyIcon size={36} color="#4CAF50" />
+                </View>
+                <Text style={styles.onboardingSlideTitle}>Share with family</Text>
+                <Text style={styles.onboardingSlideBody}>
+                  Invite your household with a code. Everyone sees the same list in real time, so nothing gets forgotten.
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Pagination Dots */}
+            <View style={styles.onboardingDots}>
+              {[0, 1, 2].map((i) => (
+                <View
+                  key={i}
+                  style={[styles.onboardingDot, i === onboardingPage && styles.onboardingDotActive]}
+                />
+              ))}
+            </View>
+
+            {/* Get Started Button */}
+            <Pressable
+              style={styles.onboardingButton}
+              onPress={() => {
+                setShowOnboarding(false);
+                AsyncStorage.setItem('hasSeenOnboarding', 'true');
+              }}
+            >
+              <LinearGradient
+                colors={[COLORS.gold.light, COLORS.gold.base, COLORS.gold.dark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Text style={styles.onboardingButtonText}>
+                {onboardingPage === 2 ? 'Get Started' : 'Skip'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Missing Items Alert */}
       {missingItems.length > 0 && (
@@ -2268,5 +2571,130 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  // List Picker
+  listPickerScroll: {
+    maxHeight: 250,
+    width: '100%',
+    marginBottom: SPACING.md,
+  },
+  listPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  listPickerItemActive: {
+    backgroundColor: `${COLORS.gold.base}20`,
+    borderWidth: 1,
+    borderColor: COLORS.gold.base,
+  },
+  listPickerItemText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+    color: COLORS.text.primary,
+  },
+  listPickerItemTextActive: {
+    fontWeight: '700',
+    color: COLORS.gold.dark,
+  },
+  listPickerCheck: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.gold.base,
+  },
+  // Onboarding
+  onboardingOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  onboardingCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    overflow: 'hidden',
+    ...SHADOWS.glass,
+  },
+  onboardingCardBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  onboardingCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  onboardingCardBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  onboardingScroll: {
+    flexGrow: 0,
+  },
+  onboardingSlide: {
+    width: Dimensions.get('window').width - 64,
+    maxWidth: 360,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xxl,
+    paddingBottom: SPACING.md,
+    alignItems: 'center',
+  },
+  onboardingIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(212, 175, 55, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.lg,
+  },
+  onboardingSlideTitle: {
+    fontFamily: 'Georgia',
+    fontSize: FONT_SIZES.title,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
+  onboardingSlideBody: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  onboardingDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: SPACING.md,
+  },
+  onboardingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(200, 205, 215, 0.4)',
+  },
+  onboardingDotActive: {
+    backgroundColor: COLORS.gold.base,
+    width: 20,
+  },
+  onboardingButton: {
+    marginHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md + 2,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  onboardingButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.white,
+    letterSpacing: 0.5,
   },
 });

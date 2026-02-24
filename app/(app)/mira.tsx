@@ -21,9 +21,11 @@ import { useThemeStore } from '../../src/stores/themeStore';
 import { useAuthStore } from '../../src/stores/authStore';
 import { supabase } from '../../src/services/supabase';
 import { mira, getRandomResponse } from '../../src/services/mira';
+import { useWakeWord } from '../../src/services/wakeWord';
 import type { ConversationTurn, MiraRecipe } from '../../src/services/mira';
 import { getActiveList, getListItems, addItem } from '../../src/services/lists';
 import { saveMiraMealPlan } from '../../src/services/mealPlans';
+import { saveMiraRecipe } from '../../src/services/recipes';
 import { useFeatureQuota } from '../../src/hooks/useSubscription';
 import { PaywallPrompt, PaywallBanner } from '../../src/components/PaywallPrompt';
 import {
@@ -62,6 +64,34 @@ export default function MiraScreen() {
 
   // Feature quota tracking
   const { canUse, remaining, limit, unlimited, increment, isPremium } = useFeatureQuota('miraQueriesPerDay');
+
+  // Wake word detection
+  const { startWakeWord, stopWakeWord, pauseWakeWord, resumeWakeWord } = useWakeWord();
+
+  // Start wake word on mount, stop on unmount
+  useEffect(() => {
+    startWakeWord(async () => {
+      // Wake word detected — greet and start listening
+      pauseWakeWord();
+      await mira.greet();
+      const started = await mira.startListening();
+      if (started) {
+        setIsListening(true);
+      } else {
+        resumeWakeWord();
+      }
+    });
+    return () => stopWakeWord();
+  }, []);
+
+  // Pause wake word while Mira is actively recording, resume after
+  useEffect(() => {
+    if (isListening || isThinking) {
+      pauseWakeWord();
+    } else {
+      resumeWakeWord();
+    }
+  }, [isListening, isThinking]);
 
   // Pulse animation for listening
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -183,6 +213,20 @@ export default function MiraScreen() {
       Alert.alert('Added!', `${recipe.ingredients.length} ingredients from "${recipe.name}" added to your list.`);
     } catch (error) {
       Alert.alert('Error', 'Could not add ingredients to your list.');
+    }
+  }, [household]);
+
+  const handleSaveRecipe = useCallback(async (recipe: MiraRecipe) => {
+    if (!household) return;
+    try {
+      const saved = await saveMiraRecipe(household.id, recipe);
+      if (saved) {
+        Alert.alert('Saved!', `"${recipe.name}" has been saved to your recipes.`);
+      } else {
+        Alert.alert('Error', 'Could not save recipe. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Could not save recipe. Please try again.');
     }
   }, [household]);
 
@@ -465,17 +509,29 @@ export default function MiraScreen() {
                     </View>
                   )}
 
-                  {/* Add Ingredients to List */}
-                  <Pressable
-                    style={styles.addToListButton}
-                    onPress={() => handleAddRecipeToList(recipes[index])}
-                  >
-                    <LinearGradient
-                      colors={[COLORS.gold.light, COLORS.gold.base]}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <Text style={styles.addToListText}>Add Ingredients to List</Text>
-                  </Pressable>
+                  {/* Recipe Action Buttons */}
+                  <View style={styles.recipeActions}>
+                    <Pressable
+                      style={styles.addToListButton}
+                      onPress={() => handleAddRecipeToList(recipes[index])}
+                    >
+                      <LinearGradient
+                        colors={[COLORS.gold.light, COLORS.gold.base]}
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <Text style={styles.addToListText}>Add to List</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.saveRecipeButton}
+                      onPress={() => handleSaveRecipe(recipes[index])}
+                    >
+                      <LinearGradient
+                        colors={['rgba(255, 255, 255, 0.6)', 'rgba(250, 252, 255, 0.4)']}
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <Text style={styles.saveRecipeText}>Save Recipe</Text>
+                    </Pressable>
+                  </View>
                 </View>
               )}
             </View>
@@ -831,16 +887,35 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     fontStyle: 'italic',
   },
+  recipeActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
   addToListButton: {
+    flex: 1,
     borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.sm + 2,
     alignItems: 'center',
     overflow: 'hidden',
-    marginTop: SPACING.md,
   },
   addToListText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  saveRecipeButton: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.gold.base,
+  },
+  saveRecipeText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.gold.dark,
   },
 });

@@ -40,6 +40,61 @@ export async function getActiveList(householdId: string): Promise<GroceryList | 
   }
 }
 
+// Get all non-archived lists for a household
+export async function getAllLists(householdId: string): Promise<GroceryList[]> {
+  try {
+    const { data, error } = await supabase
+      .from('grocery_lists')
+      .select('*')
+      .eq('household_id', householdId)
+      .neq('status', 'archived')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    logger.error('Error getting all lists:', error);
+    return [];
+  }
+}
+
+// Create a new list for a household
+export async function createList(householdId: string, name: string): Promise<GroceryList | null> {
+  try {
+    const { data, error } = await supabase
+      .from('grocery_lists')
+      .insert({
+        household_id: householdId,
+        name,
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    logger.error('Error creating list:', error);
+    return null;
+  }
+}
+
+// Archive a list
+export async function archiveList(listId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('grocery_lists')
+      .update({ status: 'archived' })
+      .eq('id', listId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    logger.error('Error archiving list:', error);
+    return false;
+  }
+}
+
 // Get items for a list with user names
 export async function getListItems(listId: string): Promise<ListItem[]> {
   try {

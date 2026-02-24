@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { Recipe, RecipeIngredient } from '../types';
+import type { MiraRecipe } from './mira';
 import { logger } from '../utils/logger';
 import { getActiveList, addItem } from './lists';
 
@@ -150,6 +151,29 @@ export async function deleteRecipe(recipeId: string): Promise<boolean> {
     logger.error('Error deleting recipe:', error);
     return false;
   }
+}
+
+// Save a Mira-generated recipe to the household's recipes
+export async function saveMiraRecipe(
+  householdId: string,
+  recipe: MiraRecipe
+): Promise<Recipe | null> {
+  // Convert string[] ingredients to RecipeIngredient[]
+  const ingredients: RecipeIngredient[] = recipe.ingredients.map((str) => ({
+    item: str,
+    amount: '',
+  }));
+
+  return createRecipe(householdId, {
+    name: recipe.name,
+    description: recipe.description,
+    prep_time: recipe.prepTime,
+    cook_time: recipe.cookTime,
+    servings: recipe.servings,
+    ingredients,
+    instructions: recipe.instructions,
+    source: 'mira',
+  });
 }
 
 // Add all ingredients from a recipe to the active shopping list

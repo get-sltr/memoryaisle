@@ -19,7 +19,7 @@
         "NSLocationWhenInUseUsageDescription": "We use your location to show your grocery list when you arrive at a store.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to notify you when you arrive at a store so you never forget your list.",
         "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns.",
-        "NSMicrophoneUsageDescription": "Mira uses your microphone to hear what items you want to add to your list.",
+        "NSMicrophoneUsageDescription": "Mira uses your microphone to listen for 'Hey Mira' and to hear items you want to add to your list.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -86,7 +86,7 @@
       "router": {},
       "supabaseUrl": "",
       "supabaseAnonKey": "",
-      "picovoiceAccessKey": ""
+      "davoiceLicenseKey": ""
     },
     "owner": "memoryaisle10s-organization"
   }

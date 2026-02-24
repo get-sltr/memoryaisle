@@ -10,8 +10,8 @@ module.exports = function expoConfig({ config }) {
       // Supabase configuration
       supabaseUrl: process.env.SUPABASE_URL || '',
       supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
-      // Picovoice for wake word detection
-      picovoiceAccessKey: process.env.PICOVOICE_ACCESS_KEY || '',
+      // DaVoice for wake word detection
+      davoiceLicenseKey: process.env.DAVOICE_LICENSE_KEY || '',
     },
   };
 };
