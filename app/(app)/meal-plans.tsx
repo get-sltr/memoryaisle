@@ -39,113 +39,6 @@ import type { MiraMealPlan, MiraDayPlan, MiraMeal } from '../../src/services/mir
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Sample meal plan data (would come from Mira in production)
-const SAMPLE_MEAL_PLANS: MiraMealPlan[] = [
-  {
-    name: '7-Day Balanced Nutrition',
-    description: 'A well-rounded week of healthy meals with optimal macros',
-    duration: 7,
-    dailyTargets: {
-      calories: 2000,
-      protein: '120g',
-      carbs: '200g',
-      fat: '70g',
-    },
-    dietType: 'balanced',
-    days: [
-      {
-        day: 1,
-        meals: {
-          breakfast: {
-            name: 'Greek Yogurt Parfait',
-            description: 'Creamy yogurt with granola, berries, and honey',
-            calories: 380,
-            macros: { protein: '18g', carbs: '52g', fat: '12g' },
-            ingredients: ['Greek yogurt', 'Granola', 'Mixed berries', 'Honey'],
-            prepTime: '5 min',
-          },
-          lunch: {
-            name: 'Mediterranean Quinoa Bowl',
-            description: 'Protein-packed quinoa with fresh vegetables',
-            calories: 520,
-            macros: { protein: '28g', carbs: '58g', fat: '18g' },
-            ingredients: ['Quinoa', 'Chickpeas', 'Cucumber', 'Tomatoes', 'Feta', 'Olive oil'],
-            prepTime: '20 min',
-          },
-          dinner: {
-            name: 'Grilled Salmon with Asparagus',
-            description: 'Omega-3 rich salmon with roasted vegetables',
-            calories: 580,
-            macros: { protein: '45g', carbs: '25g', fat: '32g' },
-            ingredients: ['Salmon fillet', 'Asparagus', 'Lemon', 'Garlic', 'Olive oil'],
-            prepTime: '25 min',
-          },
-          snacks: {
-            name: 'Apple with Almond Butter',
-            description: 'Simple and satisfying afternoon snack',
-            calories: 280,
-            macros: { protein: '8g', carbs: '30g', fat: '16g' },
-            ingredients: ['Apple', 'Almond butter'],
-            prepTime: '2 min',
-          },
-        },
-        totalCalories: 1760,
-        totalMacros: { protein: '99g', carbs: '165g', fat: '78g' },
-      },
-      {
-        day: 2,
-        meals: {
-          breakfast: {
-            name: 'Avocado Toast with Eggs',
-            description: 'Whole grain toast topped with creamy avocado and poached eggs',
-            calories: 420,
-            macros: { protein: '20g', carbs: '35g', fat: '24g' },
-            ingredients: ['Whole grain bread', 'Avocado', 'Eggs', 'Cherry tomatoes'],
-            prepTime: '10 min',
-          },
-          lunch: {
-            name: 'Asian Chicken Salad',
-            description: 'Crispy greens with grilled chicken and sesame dressing',
-            calories: 480,
-            macros: { protein: '38g', carbs: '28g', fat: '22g' },
-            ingredients: ['Mixed greens', 'Chicken breast', 'Edamame', 'Mandarin oranges', 'Sesame dressing'],
-            prepTime: '15 min',
-          },
-          dinner: {
-            name: 'Turkey Stuffed Peppers',
-            description: 'Colorful bell peppers filled with seasoned turkey and rice',
-            calories: 520,
-            macros: { protein: '42g', carbs: '45g', fat: '16g' },
-            ingredients: ['Bell peppers', 'Ground turkey', 'Brown rice', 'Tomato sauce', 'Cheese'],
-            prepTime: '35 min',
-          },
-          snacks: {
-            name: 'Hummus with Veggies',
-            description: 'Creamy hummus with crunchy vegetable sticks',
-            calories: 220,
-            macros: { protein: '8g', carbs: '22g', fat: '12g' },
-            ingredients: ['Hummus', 'Carrots', 'Celery', 'Cucumber'],
-            prepTime: '5 min',
-          },
-        },
-        totalCalories: 1640,
-        totalMacros: { protein: '108g', carbs: '130g', fat: '74g' },
-      },
-    ],
-    shoppingList: [
-      'Greek yogurt', 'Granola', 'Mixed berries', 'Honey', 'Quinoa',
-      'Chickpeas', 'Cucumber', 'Tomatoes', 'Feta cheese', 'Olive oil',
-      'Salmon fillets', 'Asparagus', 'Lemons', 'Garlic', 'Apples',
-      'Almond butter', 'Whole grain bread', 'Avocados', 'Eggs',
-    ],
-    tips: [
-      'Prep ingredients on Sunday for faster weekday cooking',
-      'Keep healthy snacks pre-portioned for grab-and-go convenience',
-      'Stay hydrated - aim for 8 glasses of water daily',
-    ],
-  },
-];
-
 type TabType = 'active' | 'saved' | 'history';
 
 // Convert database MealPlanWithMeals to UI MiraMealPlan format
@@ -235,9 +128,6 @@ export default function MealPlansScreen() {
         const currentPlan = await getCurrentMealPlan(household.id);
         if (currentPlan && currentPlan.planned_meals.length > 0) {
           setSelectedPlan(dbPlanToMiraPlan(currentPlan));
-        } else {
-          // Fall back to sample data if no real plan exists
-          setSelectedPlan(SAMPLE_MEAL_PLANS[0]);
         }
 
         // Get all plans for saved/history tabs
@@ -246,8 +136,7 @@ export default function MealPlansScreen() {
         const pastPlans = allPlans.filter(p => p.end_date < today && p.planned_meals.length > 0);
         setSavedPlans(pastPlans.map(dbPlanToMiraPlan));
       } catch {
-        // On error, fall back to sample
-        setSelectedPlan(SAMPLE_MEAL_PLANS[0]);
+        // On error, show empty state
       } finally {
         setIsLoading(false);
       }
