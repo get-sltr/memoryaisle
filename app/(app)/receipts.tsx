@@ -55,7 +55,6 @@ export default function ReceiptsScreen() {
         .filter(item => !item.is_completed)
         .map(item => item.name);
 
-      console.log("DEBUG receipts:", { householdId: household?.id, hasHousehold: !!household });
       const result = await receiptService.scanAndCompare(base64, listItemNames, household?.id);
       setLastResult(result);
 

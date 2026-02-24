@@ -31,6 +31,7 @@ import {
 } from '../../src/constants/theme';
 import type { CulturalPreference, WeeklyTradition, DietaryPreference, AllergenType } from '../../src/types';
 import { saveDietaryPreferences } from '../../src/services/auth';
+import { supabase } from '../../src/services/supabase';
 
 // Member role options
 const ROLE_OPTIONS = [
@@ -148,6 +149,12 @@ export default function FamilyScreen() {
   );
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Family member management state
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState('other');
+  const [isAddingMember, setIsAddingMember] = useState(false);
+
   // Spark Joy state
   const [sparkJoySuggestion, setSparkJoySuggestion] = useState<string | null>(null);
   const [isLoadingSparkJoy, setIsLoadingSparkJoy] = useState(false);
@@ -182,6 +189,73 @@ export default function FamilyScreen() {
   ]);
 
   const parseList = (str: string) => str.split(',').map(s => s.trim()).filter(Boolean);
+
+  // Add a family member
+  const handleAddMember = async () => {
+    if (!newMemberName.trim() || !household?.id) return;
+    setIsAddingMember(true);
+    try {
+      const { data, error } = await supabase
+        .from('family_members')
+        .insert({
+          household_id: household.id,
+          name: newMemberName.trim(),
+          role: newMemberRole,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local store
+      const updatedMembers = [...(household.members || []), {
+        id: data.id,
+        name: data.name,
+        role: data.role,
+      }];
+      setHousehold({ ...household, members: updatedMembers });
+
+      setNewMemberName('');
+      setNewMemberRole('other');
+      setShowAddMember(false);
+      Alert.alert('Added!', `${data.name} has been added to your family.`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add family member');
+    } finally {
+      setIsAddingMember(false);
+    }
+  };
+
+  // Remove a family member
+  const handleRemoveMember = (member: { id: string; name: string }) => {
+    Alert.alert(
+      'Remove Member',
+      `Remove ${member.name} from your family?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            if (!household) return;
+            try {
+              const { error } = await supabase
+                .from('family_members')
+                .delete()
+                .eq('id', member.id);
+
+              if (error) throw error;
+
+              const updatedMembers = (household.members || []).filter(m => m.id !== member.id);
+              setHousehold({ ...household, members: updatedMembers });
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to remove family member');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Generate Spark Joy suggestion
   const generateSparkJoy = useCallback(async () => {
@@ -593,19 +667,101 @@ export default function FamilyScreen() {
           <View style={styles.membersGrid}>
             {members.length > 0 ? (
               members.map((member) => (
-                <MemberCard key={member.id} member={member} />
+                <Pressable
+                  key={member.id}
+                  onLongPress={() => handleRemoveMember(member)}
+                  delayLongPress={500}
+                >
+                  <MemberCard member={member} />
+                </Pressable>
               ))
             ) : (
               <View style={styles.emptyMembers}>
                 <Text style={styles.emptyText}>
-                  Invite family members to see them here
-                </Text>
-                <Text style={styles.emptyHint}>
-                  Use the "Invite Family" option in the menu
+                  Add family members to personalize Mira's suggestions
                 </Text>
               </View>
             )}
           </View>
+
+          {/* Add Member Form */}
+          {showAddMember ? (
+            <View style={styles.addMemberForm}>
+              <InputField
+                label="Name"
+                placeholder="Family member's name"
+                value={newMemberName}
+                onChangeText={setNewMemberName}
+              />
+              <Text style={styles.chipSectionLabel}>Role</Text>
+              <View style={styles.chipGrid}>
+                {ROLE_OPTIONS.map((option) => (
+                  <Pressable
+                    key={option.id}
+                    style={[
+                      styles.cultureChip,
+                      newMemberRole === option.id && styles.cultureChipSelected,
+                    ]}
+                    onPress={() => setNewMemberRole(option.id)}
+                  >
+                    <BlurView intensity={15} tint="light" style={StyleSheet.absoluteFill} />
+                    <LinearGradient
+                      colors={newMemberRole === option.id
+                        ? [`${COLORS.gold.light}40`, `${COLORS.gold.base}20`]
+                        : ['rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.3)']
+                      }
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <View style={[
+                      styles.chipBorder,
+                      newMemberRole === option.id && styles.chipBorderSelected
+                    ]} />
+                    <View style={styles.cultureChipContent}>
+                      <Text style={styles.cultureChipIcon}>{option.icon}</Text>
+                      <Text style={[
+                        styles.cultureChipLabel,
+                        newMemberRole === option.id && styles.cultureChipLabelSelected
+                      ]}>
+                        {option.label}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.addMemberActions}>
+                <Pressable
+                  style={styles.addMemberCancel}
+                  onPress={() => { setShowAddMember(false); setNewMemberName(''); }}
+                >
+                  <Text style={styles.addMemberCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.addMemberSave, (!newMemberName.trim() || isAddingMember) && { opacity: 0.5 }]}
+                  onPress={handleAddMember}
+                  disabled={!newMemberName.trim() || isAddingMember}
+                >
+                  <LinearGradient
+                    colors={[COLORS.gold.light, COLORS.gold.base]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <Text style={styles.addMemberSaveText}>
+                    {isAddingMember ? 'Adding...' : 'Add Member'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <Pressable
+              style={styles.addMemberButton}
+              onPress={() => setShowAddMember(true)}
+            >
+              <Text style={styles.addMemberButtonText}>+ Add Family Member</Text>
+            </Pressable>
+          )}
+
+          {members.length > 0 && (
+            <Text style={styles.memberHint}>Long-press a member to remove</Text>
+          )}
         </SectionCard>
 
         {/* Together Time Section */}
@@ -1042,12 +1198,62 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     textAlign: 'center',
   },
-  emptyHint: {
+  addMemberButton: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.gold.light,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  addMemberButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.gold.dark,
+  },
+  addMemberForm: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  addMemberActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  addMemberCancel: {
+    flex: 1,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    alignItems: 'center',
+  },
+  addMemberCancelText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
+  },
+  addMemberSave: {
+    flex: 1,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  addMemberSaveText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  memberHint: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.text.secondary,
-    marginTop: SPACING.xs,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
     fontStyle: 'italic',
-    opacity: 0.7,
+    opacity: 0.6,
   },
   momentCard: {
     borderRadius: BORDER_RADIUS.xl,

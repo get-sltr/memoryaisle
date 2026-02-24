@@ -120,6 +120,23 @@ export async function addItem(
   }
 }
 
+// Get count of completed items for a list
+export async function getCompletedCount(listId: string): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('list_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('list_id', listId)
+      .eq('is_completed', true);
+
+    if (error) throw error;
+    return count || 0;
+  } catch (error) {
+    logger.error('Error getting completed count:', error);
+    return 0;
+  }
+}
+
 // Mark item as completed
 export async function completeItem(itemId: string): Promise<boolean> {
   try {

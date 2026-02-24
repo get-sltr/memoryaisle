@@ -9,6 +9,8 @@ import {
   Image,
   Alert,
   ImageSourcePropType,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +23,7 @@ import {
   GlassIconWrapper,
 } from '../../src/components/GlassIcons';
 import { useAuthStore } from '../../src/stores/authStore';
+import { supabase } from '../../src/services/supabase';
 import { ALLERGENS, type AllergenType } from '../../src/utils/allergenDetection';
 import {
   COLORS,
@@ -124,8 +127,23 @@ export default function ProfileScreen() {
       dietaryPreferences: selectedDietary.length > 0 ? selectedDietary as any : undefined,
     };
 
-    // Update local state (in real app, would also save to Supabase)
     if (user) {
+      // Persist to Supabase
+      const { error } = await supabase
+        .from('users')
+        .update({
+          allergies: selectedAllergies,
+          dietary_preferences: selectedDietary,
+          profile: updatedProfile,
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        Alert.alert('Error', 'Could not save profile. Please try again.');
+        return;
+      }
+
+      // Update local state
       setUser({
         ...user,
         allergies: selectedAllergies,
@@ -143,6 +161,7 @@ export default function ProfileScreen() {
 
   return (
     <ScreenWrapper>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={() => router.back()}>
@@ -282,6 +301,7 @@ export default function ProfileScreen() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenWrapper>
   );
 }

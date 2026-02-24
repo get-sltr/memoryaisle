@@ -19,7 +19,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video, ResizeMode } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { signIn, signInWithOAuth } from '../../src/services/auth';
+import { signIn, signInWithOAuth, resetPassword } from '../../src/services/auth';
 import Svg, { Path } from 'react-native-svg';
 
 // Apple Logo SVG Component
@@ -74,6 +74,11 @@ export default function SignIn() {
       return;
     }
 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     setLoading(true);
     const { success, error } = await signIn(email, password);
     setLoading(false);
@@ -84,6 +89,19 @@ export default function SignIn() {
     }
 
     router.replace('/');
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('Enter Email', 'Please enter your email address first, then tap Forgot Password.');
+      return;
+    }
+    const { success, error } = await resetPassword(email);
+    if (success) {
+      Alert.alert('Check Your Email', 'If an account exists with that email, we sent a password reset link.');
+    } else {
+      Alert.alert('Error', error || 'Failed to send reset email');
+    }
   };
 
   const handleOAuthSignIn = async (provider: 'google' | 'facebook' | 'apple') => {
@@ -190,6 +208,11 @@ export default function SignIn() {
                   secureTextEntry
                 />
               </View>
+
+              {/* Forgot Password */}
+              <Pressable onPress={handleForgotPassword}>
+                <Text style={styles.forgotPassword}>Forgot Password?</Text>
+              </Pressable>
 
               {/* Sign In Button */}
               <Pressable
@@ -430,6 +453,14 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md + 2,
     fontSize: FONT_SIZES.md,
     color: COLORS.text.primary,
+  },
+
+  forgotPassword: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gold.dark,
+    textAlign: 'right',
+    marginBottom: SPACING.sm,
+    fontWeight: '500',
   },
 
   // Primary Button

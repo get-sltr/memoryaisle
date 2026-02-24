@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -25,13 +26,16 @@ import { AuroraBackground, AuroraCard, AURORA_PALETTES } from '../../src/compone
 import { MealPlanCard } from '../../src/components/MealPlanCard';
 import { PaywallPrompt } from '../../src/components/PaywallPrompt';
 import { useFeatureAccess } from '../../src/hooks/useSubscription';
+import { useAuthStore } from '../../src/stores/authStore';
+import { getActiveList, addItem } from '../../src/services/lists';
+import { getCurrentMealPlan, getMealPlans, type MealPlanWithMeals } from '../../src/services/mealPlans';
 import {
   COLORS,
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
 } from '../../src/constants/theme';
-import type { MiraMealPlan } from '../../src/services/mira';
+import type { MiraMealPlan, MiraDayPlan, MiraMeal } from '../../src/services/mira';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -144,14 +148,113 @@ const SAMPLE_MEAL_PLANS: MiraMealPlan[] = [
 
 type TabType = 'active' | 'saved' | 'history';
 
+// Convert database MealPlanWithMeals to UI MiraMealPlan format
+function dbPlanToMiraPlan(dbPlan: MealPlanWithMeals): MiraMealPlan {
+  const meals = dbPlan.planned_meals || [];
+  const startDate = new Date(dbPlan.start_date);
+  const endDate = new Date(dbPlan.end_date);
+  const duration = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+  // Group meals by date
+  const mealsByDate = new Map<string, typeof meals>();
+  for (const meal of meals) {
+    const date = meal.date;
+    if (!mealsByDate.has(date)) mealsByDate.set(date, []);
+    mealsByDate.get(date)!.push(meal);
+  }
+
+  const days: MiraDayPlan[] = [];
+  for (let i = 0; i < duration; i++) {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + i);
+    const dateStr = date.toISOString().split('T')[0];
+    const dayMeals = mealsByDate.get(dateStr) || [];
+
+    const findMeal = (type: string): MiraMeal => {
+      const m = dayMeals.find(dm => dm.meal_type === type);
+      return {
+        name: m?.name || '',
+        description: m?.description || '',
+        calories: m?.calories || 0,
+        prepTime: m?.prep_time || '',
+        ingredients: m?.ingredients || [],
+      };
+    };
+
+    const b = findMeal('breakfast');
+    const l = findMeal('lunch');
+    const d = findMeal('dinner');
+    const s = findMeal('snack');
+
+    days.push({
+      day: i + 1,
+      meals: {
+        breakfast: b,
+        lunch: l,
+        dinner: d,
+        snacks: s,
+      },
+      totalCalories: (b.calories || 0) + (l.calories || 0) + (d.calories || 0) + (s.calories || 0),
+    });
+  }
+
+  // Collect all ingredients as shopping list
+  const shoppingList = [...new Set(meals.flatMap(m => m.ingredients || []))];
+
+  return {
+    name: dbPlan.name,
+    description: `${duration}-day meal plan`,
+    duration,
+    dailyTargets: { calories: 2000, protein: '120g', carbs: '200g', fat: '70g' },
+    dietType: 'balanced',
+    days,
+    shoppingList,
+    tips: [],
+  };
+}
+
 export default function MealPlansScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('active');
-  const [selectedPlan, setSelectedPlan] = useState<MiraMealPlan | null>(SAMPLE_MEAL_PLANS[0]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<MiraMealPlan | null>(null);
+  const [savedPlans, setSavedPlans] = useState<MiraMealPlan[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showPaywall, setShowPaywall] = useState(false);
 
   // Check if user has access to meal plans (premium only)
   const { hasAccess, isLoading: subscriptionLoading, isPremium } = useFeatureAccess('mealPlans');
+  const { household } = useAuthStore();
+
+  // Load meal plans from database
+  useEffect(() => {
+    if (!household?.id || !hasAccess) return;
+
+    const loadMealPlans = async () => {
+      setIsLoading(true);
+      try {
+        // Get current active plan
+        const currentPlan = await getCurrentMealPlan(household.id);
+        if (currentPlan && currentPlan.planned_meals.length > 0) {
+          setSelectedPlan(dbPlanToMiraPlan(currentPlan));
+        } else {
+          // Fall back to sample data if no real plan exists
+          setSelectedPlan(SAMPLE_MEAL_PLANS[0]);
+        }
+
+        // Get all plans for saved/history tabs
+        const allPlans = await getMealPlans(household.id);
+        const today = new Date().toISOString().split('T')[0];
+        const pastPlans = allPlans.filter(p => p.end_date < today && p.planned_meals.length > 0);
+        setSavedPlans(pastPlans.map(dbPlanToMiraPlan));
+      } catch {
+        // On error, fall back to sample
+        setSelectedPlan(SAMPLE_MEAL_PLANS[0]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadMealPlans();
+  }, [household?.id, hasAccess]);
 
   // Animation values
   const tabIndicator = useSharedValue(0);
@@ -176,11 +279,25 @@ export default function MealPlansScreen() {
     }
   }, [subscriptionLoading, hasAccess]);
 
-  const handleAddToShoppingList = useCallback((items: string[]) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // TODO: Add items to shopping list
-    console.log('Adding to shopping list:', items);
-  }, []);
+  const handleAddToShoppingList = useCallback(async (items: string[]) => {
+    if (!household?.id) return;
+    try {
+      const list = await getActiveList(household.id);
+      if (!list) {
+        Alert.alert('Error', 'Could not get shopping list');
+        return;
+      }
+      let added = 0;
+      for (const item of items) {
+        const result = await addItem(list.id, item, undefined, 1, 'ai_suggested');
+        if (result) added++;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Added!', `${added} ingredients added to your shopping list.`);
+    } catch {
+      Alert.alert('Error', 'Failed to add items to list');
+    }
+  }, [household?.id]);
 
   return (
     <AuroraBackground palette="northern" intensity="subtle">
@@ -231,7 +348,11 @@ export default function MealPlansScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {activeTab === 'active' && selectedPlan ? (
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={COLORS.gold.base} />
+          </View>
+        ) : activeTab === 'active' && selectedPlan ? (
           <Animated.View entering={FadeIn.duration(400)}>
             {/* Plan Overview Card */}
             <AuroraCard palette="northern" style={styles.overviewCard}>
@@ -321,12 +442,53 @@ export default function MealPlansScreen() {
               </Animated.View>
             )}
           </Animated.View>
-        ) : activeTab === 'saved' ? (
+        ) : activeTab === 'active' && !selectedPlan ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyTitle}>No Saved Plans</Text>
-            <Text style={styles.emptyText}>Ask Mira to create a meal plan and save it for later</Text>
+            <Text style={styles.emptyIcon}>🍽️</Text>
+            <Text style={styles.emptyTitle}>No Active Plan</Text>
+            <Text style={styles.emptyText}>Ask Mira to create a personalized meal plan for you</Text>
+            <Pressable style={styles.askMiraButton} onPress={() => router.push('/(app)/mira')}>
+              <LinearGradient
+                colors={[COLORS.gold.base, COLORS.gold.dark]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <Text style={styles.askMiraButtonText}>Ask Mira</Text>
+            </Pressable>
           </View>
+        ) : activeTab === 'saved' ? (
+          savedPlans.length > 0 ? (
+            <Animated.View entering={FadeIn.duration(400)}>
+              {savedPlans.map((plan, idx) => (
+                <Pressable key={idx} onPress={() => { setSelectedPlan(plan); handleTabChange('active'); }}>
+                  <AuroraCard palette="ocean" style={styles.overviewCard}>
+                    <View style={styles.overviewContent}>
+                      <Text style={styles.planName}>{plan.name}</Text>
+                      <Text style={styles.planDescription}>{plan.description}</Text>
+                      <View style={styles.statsRow}>
+                        <View style={styles.statItem}>
+                          <Text style={styles.statValue}>{plan.duration}</Text>
+                          <Text style={styles.statLabel}>Days</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                          <Text style={styles.statValue}>{plan.dailyTargets.calories}</Text>
+                          <Text style={styles.statLabel}>Cal/Day</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </AuroraCard>
+                </Pressable>
+              ))}
+            </Animated.View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📋</Text>
+              <Text style={styles.emptyTitle}>No Saved Plans</Text>
+              <Text style={styles.emptyText}>Ask Mira to create a meal plan and save it for later</Text>
+            </View>
+          )
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📜</Text>
@@ -596,5 +758,18 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
     maxWidth: 250,
+  },
+  askMiraButton: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+  },
+  askMiraButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.white,
+    textAlign: 'center',
   },
 });

@@ -6,6 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../src/services/supabase';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useThemeStore } from '../../src/stores/themeStore';
+import { COLORS } from '../../src/constants/theme';
 
 export default function OrderDetailPage() {
   const { colors, isDark } = useThemeStore();
@@ -79,13 +80,13 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
   backButton: { width: 40, height: 40, justifyContent: 'center' },
-  backText: { fontSize: 22, color: '#C9A84C' },
+  backText: { fontSize: 22, color: COLORS.gold.base },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700' },
   totalCard: { borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'center' },
   totalLabel: { fontSize: 14, color: '#888', marginBottom: 4 },
-  totalAmount: { fontSize: 36, fontWeight: '800', color: '#C9A84C' },
+  totalAmount: { fontSize: 36, fontWeight: '800', color: COLORS.gold.base },
   totalItems: { fontSize: 13, color: '#888', marginTop: 4 },
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 14, borderRadius: 12, marginBottom: 8 },
   itemName: { fontSize: 15, flex: 1 },
-  itemPrice: { fontSize: 15, fontWeight: '600', color: '#C9A84C' },
+  itemPrice: { fontSize: 15, fontWeight: '600', color: COLORS.gold.base },
 });

@@ -1,9 +1,10 @@
-// In-App Purchases Service — StoreKit 2 via react-native-iap v14
+// In-App Purchases Service -- StoreKit 2 via react-native-iap v14
 // Handles iOS subscriptions through App Store.
 //
-// ARCHITECTURE: StoreKit 2 on-device verification + direct DB writes.
+// ARCHITECTURE: StoreKit 2 on-device verification + server-side activation.
 // iOS verifies transactions at the OS level. After a verified purchase,
-// we write the subscription status directly to the DB (RLS-protected).
+// the client sends transaction data to apple-verify-receipt Edge Function
+// which writes subscription status using service_role (bypassing RLS).
 // Apple Server Notifications V2 webhook is the ultimate source of truth
 // for renewals, expirations, refunds, and revocations.
 
@@ -220,12 +221,12 @@ class IAPService {
     logger.log('IAP: transaction listeners started');
   }
 
-  // ─── On-Device Activation ────────────────────────────────────
+  // ─── Server-Side Activation ─────────────────────────────────
 
   /**
-   * Write the StoreKit 2 verified purchase directly to the subscriptions table.
-   * StoreKit 2 transactions are verified by iOS at the OS level — only verified
-   * entitlements are returned by getAvailablePurchases() / purchaseUpdatedListener.
+   * Send the StoreKit 2 verified purchase to the server for activation.
+   * The apple-verify-receipt Edge Function writes to the subscriptions table
+   * using service_role, ensuring the client never writes directly.
    */
   private async activateSubscription(purchase: Purchase): Promise<boolean> {
     const transactionId = purchase.transactionId;
@@ -235,44 +236,28 @@ class IAPService {
     }
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        logger.error('IAP: no authenticated user', userError?.message);
-        return false;
-      }
+      const expirationDate = (purchase as any).expirationDateIOS
+        ? new Date(Number((purchase as any).expirationDateIOS)).toISOString()
+        : null;
 
-      const { error: upsertError } = await supabase.from('subscriptions').upsert(
-        {
-          user_id: user.id,
-          tier: 'premium',
-          status: 'active',
-          billing_interval: 'year',
-          apple_product_id: purchase.productId,
-          apple_transaction_id: transactionId,
-          apple_original_transaction_id:
+      const { data, error } = await supabase.functions.invoke('apple-verify-receipt', {
+        body: {
+          productId: purchase.productId,
+          transactionId,
+          originalTransactionId:
             (purchase as any).originalTransactionIdentifierIOS || transactionId,
-          apple_expires_date:
-            (purchase as any).expirationDateIOS
-              ? new Date(Number((purchase as any).expirationDateIOS)).toISOString()
-              : null,
-          current_period_end:
-            (purchase as any).expirationDateIOS
-              ? new Date(Number((purchase as any).expirationDateIOS)).toISOString()
-              : null,
-          apple_environment: (purchase as any).environmentIOS || null,
-          apple_auto_renew_status: (purchase as any).autoRenewingIOS ?? true,
-          cancel_at_period_end: false,
-          updated_at: new Date().toISOString(),
+          expiresDate: expirationDate,
+          environment: (purchase as any).environmentIOS || null,
+          autoRenewStatus: (purchase as any).autoRenewingIOS ?? true,
         },
-        { onConflict: 'user_id' }
-      );
+      });
 
-      if (upsertError) {
-        logger.error('IAP: failed to write subscription', upsertError);
+      if (error) {
+        logger.error('IAP: server activation failed', error);
         return false;
       }
 
-      logger.log('IAP: subscription activated for', user.id);
+      logger.log('IAP: subscription activated via server');
       return true;
     } catch (error) {
       logger.error('IAP: activation error', error);

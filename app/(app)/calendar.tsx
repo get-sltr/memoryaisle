@@ -129,7 +129,7 @@ export default function CalendarScreen() {
         'No suggested items for this holiday yet. Would you like to add your own?',
         [
           { text: 'Maybe Later', style: 'cancel' },
-          { text: 'Add Items', onPress: () => router.push('/') },
+          { text: 'Add Items', onPress: () => router.push('/(app)') },
         ]
       );
       return;
@@ -173,7 +173,7 @@ export default function CalendarScreen() {
               Alert.alert(
                 'List Created!',
                 `Added ${addedCount} items for ${holiday.name}. Mira made it allergy-safe for your family!`,
-                [{ text: 'View List', onPress: () => router.push('/') }]
+                [{ text: 'View List', onPress: () => router.push('/(app)') }]
               );
             } catch (error) {
               console.error('Failed to add holiday items:', error);
@@ -243,7 +243,7 @@ export default function CalendarScreen() {
               Alert.alert(
                 'Items Added!',
                 `Added ${addedCount} ${tradition.name} items. Mira checked for allergies.`,
-                [{ text: 'View List', onPress: () => router.push('/') }]
+                [{ text: 'View List', onPress: () => router.push('/(app)') }]
               );
             } catch (error) {
               console.error('Failed to add tradition items:', error);

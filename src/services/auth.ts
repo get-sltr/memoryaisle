@@ -307,6 +307,20 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
   }
 }
 
+// Reset password via email
+export async function resetPassword(email: string): Promise<AuthResponse> {
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'memoryaisle://auth/callback',
+    });
+    if (error) throw error;
+    return { success: true };
+  } catch (error: any) {
+    logger.error('Password reset error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // Sign out
 export async function signOut(): Promise<AuthResponse> {
   try {

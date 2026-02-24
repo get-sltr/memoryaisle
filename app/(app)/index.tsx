@@ -38,8 +38,10 @@ import { router as appRouter } from 'expo-router';
 import {
   getActiveList,
   getListItems,
+  getCompletedCount,
   addItem,
   completeItem,
+  deleteItem,
   subscribeToList,
 } from '../../src/services/lists';
 import { mira } from '../../src/services/mira';
@@ -165,7 +167,7 @@ export default function MainList() {
 
   // Stats
   const totalItems = items.length;
-  const completedItems = 0; // TODO: Track completed items
+  const [completedItems, setCompletedItems] = useState(0);
   const familyMembers = household?.members?.length || household?.member_count || 1;
 
   // Memoized section data for SectionList - prevents recalculation on every render
@@ -281,6 +283,8 @@ export default function MainList() {
       if (activeList) {
         const listItems = await getListItems(activeList.id);
         setItems(listItems);
+        const doneCount = await getCompletedCount(activeList.id);
+        setCompletedItems(doneCount);
       }
       setLoading(false);
     }
@@ -362,11 +366,36 @@ export default function MainList() {
 
   const handleCompleteItem = useCallback(async (itemId: string) => {
     setItems((current) => current.filter((item) => item.id !== itemId));
+    setCompletedItems((prev) => prev + 1);
     const success = await completeItem(itemId);
     if (!success && list) {
       const listItems = await getListItems(list.id);
       setItems(listItems);
+      setCompletedItems((prev) => prev - 1);
     }
+  }, [list]);
+
+  const handleDeleteItem = useCallback((item: ListItem) => {
+    Alert.alert(
+      'Delete Item',
+      `Remove "${item.name}" from your list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setItems((current) => current.filter((i) => i.id !== item.id));
+            const success = await deleteItem(item.id);
+            if (!success && list) {
+              const listItems = await getListItems(list.id);
+              setItems(listItems);
+              Alert.alert('Error', 'Failed to delete item. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   }, [list]);
 
   const handleSignOut = async () => {
@@ -1073,6 +1102,7 @@ export default function MainList() {
                 <ListItemCard
                   item={item}
                   onComplete={handleCompleteItem}
+                  onDelete={handleDeleteItem}
                   categoryColor={section.categoryInfo.color}
                 />
               );
@@ -1319,7 +1349,7 @@ function StatCard({ value, label, isGold = false }: { value: number; label: stri
   );
 }
 
-const ListItemCard = memo(function ListItemCard({ item, onComplete, categoryColor }: { item: ListItem; onComplete: (id: string) => void; categoryColor?: string }) {
+const ListItemCard = memo(function ListItemCard({ item, onComplete, onDelete, categoryColor }: { item: ListItem; onComplete: (id: string) => void; onDelete?: (item: ListItem) => void; categoryColor?: string }) {
   const hasAllergyRecord = item.allergy_record && item.allergy_record.allergens.length > 0;
 
   // Convert hex color to rgba for gradient
@@ -1339,7 +1369,7 @@ const ListItemCard = memo(function ListItemCard({ item, onComplete, categoryColo
       : ['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.3)', 'rgba(212, 165, 71, 0.1)'];
 
   return (
-    <Pressable onPress={() => onComplete(item.id)} style={styles.listItem}>
+    <Pressable onPress={() => onComplete(item.id)} onLongPress={() => onDelete?.(item)} delayLongPress={500} style={styles.listItem}>
       <BlurView intensity={30} tint="light" style={styles.listItemBlur} />
       <LinearGradient
         colors={bgColors as any}

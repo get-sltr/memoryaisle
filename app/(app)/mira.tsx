@@ -19,9 +19,10 @@ import { router } from 'expo-router';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { useThemeStore } from '../../src/stores/themeStore';
 import { useAuthStore } from '../../src/stores/authStore';
+import { supabase } from '../../src/services/supabase';
 import { mira, getRandomResponse } from '../../src/services/mira';
 import type { ConversationTurn, MiraRecipe } from '../../src/services/mira';
-import { getActiveList, getListItems } from '../../src/services/lists';
+import { getActiveList, getListItems, addItem } from '../../src/services/lists';
 import { saveMiraMealPlan } from '../../src/services/mealPlans';
 import { useFeatureQuota } from '../../src/hooks/useSubscription';
 import { PaywallPrompt, PaywallBanner } from '../../src/components/PaywallPrompt';
@@ -45,7 +46,7 @@ const createTurn = (role: 'user' | 'assistant', content: string): ConversationTu
 
 export default function MiraScreen() {
   const { colors } = useThemeStore();
-  const { household } = useAuthStore();
+  const { user, household } = useAuthStore();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -56,6 +57,8 @@ export default function MiraScreen() {
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [saveMiraHistory, setSaveMiraHistory] = useState(false);
+  const historyLoaded = useRef(false);
 
   // Feature quota tracking
   const { canUse, remaining, limit, unlimited, increment, isPremium } = useFeatureQuota('miraQueriesPerDay');
@@ -93,11 +96,95 @@ export default function MiraScreen() {
     }, 100);
   }, [conversation.length]);
 
-  // Initial greeting
+  // Load save-history preference and past conversations on mount
   useEffect(() => {
-    const greeting = getRandomResponse('greeting');
-    setConversation([createTurn('assistant', greeting)]);
-  }, []);
+    if (!user?.id || historyLoaded.current) return;
+    historyLoaded.current = true;
+
+    const loadHistory = async () => {
+      // Check if save_mira_history is enabled
+      const { data: userData } = await supabase
+        .from('users')
+        .select('profile')
+        .eq('id', user.id)
+        .single();
+
+      const saveEnabled = userData?.profile?.save_mira_history ?? false;
+      setSaveMiraHistory(saveEnabled);
+
+      if (saveEnabled) {
+        // Load recent conversations (last 50 messages)
+        const { data: history } = await supabase
+          .from('mira_conversations')
+          .select('role, content, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+          .limit(50);
+
+        if (history && history.length > 0) {
+          const pastTurns: ConversationTurn[] = history.map((msg) => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at).getTime(),
+          }));
+          // Add greeting after history
+          const greeting = getRandomResponse('greeting');
+          setConversation([...pastTurns, createTurn('assistant', greeting)]);
+          return;
+        }
+      }
+
+      // No history or saving disabled - just show greeting
+      const greeting = getRandomResponse('greeting');
+      setConversation([createTurn('assistant', greeting)]);
+    };
+
+    loadHistory();
+  }, [user?.id]);
+
+  // Save a message to mira_conversations
+  const saveMessage = useCallback(async (role: 'user' | 'assistant', content: string) => {
+    if (!saveMiraHistory || !user?.id) return;
+    try {
+      await supabase.from('mira_conversations').insert({
+        user_id: user.id,
+        role,
+        content,
+      });
+    } catch {
+      // Non-critical - don't block UI
+    }
+  }, [saveMiraHistory, user?.id]);
+
+  // Build dietary restrictions string for Mira context
+  const dietaryRestrictions = useCallback((): string | undefined => {
+    const parts: string[] = [];
+    if (household?.dietary_preferences && household.dietary_preferences.length > 0) {
+      parts.push(`Dietary: ${household.dietary_preferences.join(', ')}`);
+    }
+    const allergens = (household?.familyProfile as any)?.allergens;
+    if (allergens && allergens.length > 0) {
+      parts.push(`Allergies: ${allergens.join(', ')}`);
+    }
+    return parts.length > 0 ? parts.join('. ') : undefined;
+  }, [household]);
+
+  const handleAddRecipeToList = useCallback(async (recipe: MiraRecipe) => {
+    if (!household) return;
+    try {
+      const activeList = await getActiveList(household.id);
+      if (!activeList) {
+        Alert.alert('No List', 'Create a grocery list first.');
+        return;
+      }
+      for (const ingredient of recipe.ingredients) {
+        await addItem(activeList.id, ingredient, undefined, 1, 'ai_suggested');
+      }
+      Alert.alert('Added!', `${recipe.ingredients.length} ingredients from "${recipe.name}" added to your list.`);
+    } catch (error) {
+      Alert.alert('Error', 'Could not add ingredients to your list.');
+    }
+  }, [household]);
 
   const handleSend = useCallback(async () => {
     if (!inputText.trim()) return;
@@ -113,6 +200,7 @@ export default function MiraScreen() {
 
     // Add user message
     setConversation(prev => [...prev, createTurn('user', message)]);
+    saveMessage('user', message);
     setIsThinking(true);
 
     try {
@@ -123,9 +211,13 @@ export default function MiraScreen() {
       const activeList = household ? await getActiveList(household.id) : null;
       const items = activeList ? await getListItems(activeList.id) : [];
 
-      const context = { currentListItems: items.map(i => i.name) };
+      const context = {
+        currentListItems: items.map(i => i.name),
+        familyDietaryRestrictions: dietaryRestrictions(),
+      };
       const result = await mira.processText(message, context);
 
+      saveMessage('assistant', result.response);
       setConversation(prev => {
         const newConversation = [...prev, createTurn('assistant', result.response)];
         // If there's a recipe, save it mapped to this message index
@@ -164,7 +256,7 @@ export default function MiraScreen() {
     } finally {
       setIsThinking(false);
     }
-  }, [inputText, household, canUse, increment]);
+  }, [inputText, household, canUse, increment, saveMessage, dietaryRestrictions]);
 
   const toggleListening = useCallback(async () => {
     if (isListening) {
@@ -176,9 +268,7 @@ export default function MiraScreen() {
         const items = activeList ? await getListItems(activeList.id) : [];
         const context = { currentListItems: items.map(i => i.name) };
 
-        console.log('Stopping recording and processing...');
         const result = await mira.stopListening(context);
-        console.log('Mira result:', result);
 
         // Add user's transcription to conversation if available
         if (result.transcription) {
@@ -209,10 +299,8 @@ export default function MiraScreen() {
     } else {
       // Start listening
       setIsListening(true);
-      console.log('Starting voice recording...');
       try {
         const started = await mira.startListening();
-        console.log('Recording started:', started);
         if (!started) {
           setIsListening(false);
           Alert.alert(
@@ -376,6 +464,18 @@ export default function MiraScreen() {
                       ))}
                     </View>
                   )}
+
+                  {/* Add Ingredients to List */}
+                  <Pressable
+                    style={styles.addToListButton}
+                    onPress={() => handleAddRecipeToList(recipes[index])}
+                  >
+                    <LinearGradient
+                      colors={[COLORS.gold.light, COLORS.gold.base]}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <Text style={styles.addToListText}>Add Ingredients to List</Text>
+                  </Pressable>
                 </View>
               )}
             </View>
@@ -730,5 +830,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: SPACING.xs,
     fontStyle: 'italic',
+  },
+  addToListButton: {
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+    overflow: 'hidden',
+    marginTop: SPACING.md,
+  },
+  addToListText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.white,
   },
 });

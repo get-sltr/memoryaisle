@@ -52,16 +52,9 @@ export function useSubscription(): UseSubscriptionReturn {
 
     setIsLoading(true);
     try {
-      // Admin and founder family get premium for free
+      // Admin gets premium for free
       const isAdmin = await adminService.isAdmin();
       if (isAdmin) {
-        setSubscription({ tier: 'premium', status: 'active' });
-        setIsLoading(false);
-        return;
-      }
-
-      const { data: isFounderFamily } = await supabase.rpc('is_founder_family');
-      if (isFounderFamily) {
         setSubscription({ tier: 'premium', status: 'active' });
         setIsLoading(false);
         return;

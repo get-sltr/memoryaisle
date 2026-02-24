@@ -81,10 +81,9 @@ export default function RootLayout() {
         },
         // On departure from store (optional)
         (store) => {
-          console.log(`Left ${store.name}`);
+          // Store departure - no action needed
         }
       );
-      console.log('Geofence monitoring started');
     } catch (error) {
       console.warn('Geofence init failed:', error);
     }
@@ -108,7 +107,7 @@ export default function RootLayout() {
       notificationService.addNotificationListeners(
         // On notification received (app in foreground)
         (notification) => {
-          console.log('Notification received:', notification.request.content.title);
+          // Notification received in foreground - handled by notification service
         },
         // On notification tapped
         (response) => {
@@ -144,7 +143,7 @@ export default function RootLayout() {
         router.push('/(app)/household');
         break;
       case 'mira_suggestion':
-        router.push('/(app)/chat');
+        router.push('/(app)/mira');
         break;
       default:
         break;

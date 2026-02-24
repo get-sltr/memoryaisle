@@ -76,6 +76,11 @@ export default function SignUp() {
       return;
     }
 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;

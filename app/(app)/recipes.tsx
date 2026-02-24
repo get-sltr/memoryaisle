@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getRecipes, addRecipeToList } from '../../src/services/recipes';
@@ -121,16 +122,13 @@ export default function RecipesScreen() {
 
   const loadRecipes = useCallback(async () => {
     if (!household?.id) {
-      console.log('No household ID, showing default recipes');
       setRecipes(DEFAULT_RECIPES);
       setLoading(false);
       return;
     }
 
-    console.log('Loading recipes for household:', household.id);
     try {
       const data = await getRecipes(household.id);
-      console.log('Loaded recipes:', data.length);
       // Show default recipes if user has none
       setRecipes(data.length > 0 ? data : DEFAULT_RECIPES);
     } catch (error) {
@@ -153,8 +151,7 @@ export default function RecipesScreen() {
   }, [loadRecipes]);
 
   const handleOpenMira = () => {
-    // TODO: Open Mira chat for recipe suggestions
-    console.log('Opening Mira for recipes');
+    router.push('/(app)/mira');
   };
 
   const handleAddToList = useCallback(async (recipe: Recipe) => {

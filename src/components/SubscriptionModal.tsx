@@ -204,7 +204,7 @@ export function SubscriptionModal({
                 <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.ctaText}>
-                  Start Free Trial — {displayPrice}/year
+                  Start Free Trial - {displayPrice}/year
                 </Text>
               )}
             </Pressable>

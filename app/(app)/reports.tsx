@@ -168,7 +168,7 @@ export default function ReportsScreen() {
         </View>
       </View>
       <Text style={[styles.itemPrice, { color: colors.text.primary }]}>
-        {item.price != null ? `$${item.price.toFixed(2)}` : '—'}
+        {item.price != null ? `$${item.price.toFixed(2)}` : '-'}
       </Text>
     </View>
   );

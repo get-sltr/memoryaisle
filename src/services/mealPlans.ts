@@ -432,6 +432,40 @@ export async function deleteMealPlan(planId: string): Promise<void> {
 }
 
 // Get the current/active meal plan (most recent that includes today)
+// Get all unique ingredients from meals in a date range
+export async function getShoppingListFromMeals(
+  householdId: string,
+  startDate: string,
+  endDate: string,
+): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('planned_meals')
+      .select('ingredients, meal_plan_id')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .eq('is_completed', false)
+      .in(
+        'meal_plan_id',
+        (await supabase
+          .from('meal_plans')
+          .select('id')
+          .eq('household_id', householdId)
+        ).data?.map(p => p.id) || []
+      );
+
+    if (error) throw error;
+
+    // Flatten and deduplicate ingredients
+    const allIngredients = (data || []).flatMap(m => m.ingredients || []);
+    const unique = [...new Set(allIngredients.map(i => i.toLowerCase().trim()))];
+    return unique;
+  } catch (error) {
+    logger.error('getShoppingListFromMeals error:', error);
+    return [];
+  }
+}
+
 export async function getCurrentMealPlan(householdId: string): Promise<MealPlanWithMeals | null> {
   try {
     const today = new Date().toISOString().split('T')[0];

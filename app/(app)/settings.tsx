@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   Linking,
+  Share,
   ActivityIndicator,
   AppState,
   Switch,
@@ -88,7 +89,7 @@ function SettingRow({
 }
 
 export default function SettingsScreen() {
-  const { user, signOut: clearAuthStore } = useAuthStore();
+  const { user, household, signOut: clearAuthStore } = useAuthStore();
   const { subscription, isPremium, isLoading, restorePurchases, refresh } = useSubscription();
   const { isDark, toggleTheme } = useThemeStore();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
@@ -202,7 +203,7 @@ export default function SettingsScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'This will permanently delete your account and all associated data including your family profiles, grocery lists, meal plans, and Mira conversation history. This action cannot be undone.',
+      'This will permanently delete your account and all associated data including your family profiles, grocery lists, meal plans, and conversation history. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -225,29 +226,69 @@ export default function SettingsScreen() {
 
                     setIsDeletingAccount(true);
                     try {
-                      // Delete all user data from Supabase
                       const userId = user?.id;
                       if (!userId) throw new Error('No user ID');
 
-                      // Delete in order of dependencies
-                      await supabase.from('list_items').delete().eq('list_id',
-                        supabase.from('grocery_lists').select('id').eq('user_id', userId)
-                      );
-                      await supabase.from('grocery_lists').delete().eq('user_id', userId);
+                      // Get user's household_id for household-scoped deletions
+                      const { data: userProfile } = await supabase
+                        .from('users')
+                        .select('household_id')
+                        .eq('id', userId)
+                        .single();
+
+                      const householdId = userProfile?.household_id;
+
+                      // Delete household-scoped data
+                      if (householdId) {
+                        // Get grocery list IDs to delete their items first
+                        const { data: lists } = await supabase
+                          .from('grocery_lists')
+                          .select('id')
+                          .eq('household_id', householdId);
+
+                        if (lists && lists.length > 0) {
+                          await supabase
+                            .from('list_items')
+                            .delete()
+                            .in('list_id', lists.map(l => l.id));
+                        }
+                        await supabase.from('grocery_lists').delete().eq('household_id', householdId);
+
+                        // Get meal plan IDs to delete planned meals first
+                        const { data: mealPlans } = await supabase
+                          .from('meal_plans')
+                          .select('id')
+                          .eq('household_id', householdId);
+
+                        if (mealPlans && mealPlans.length > 0) {
+                          await supabase
+                            .from('planned_meals')
+                            .delete()
+                            .in('meal_plan_id', mealPlans.map(mp => mp.id));
+                        }
+                        await supabase.from('meal_plans').delete().eq('household_id', householdId);
+
+                        await supabase.from('recipes').delete().eq('household_id', householdId);
+                        await supabase.from('family_members').delete().eq('household_id', householdId);
+                        await supabase.from('purchase_history').delete().eq('household_id', householdId);
+                        await supabase.from('purchase_patterns').delete().eq('household_id', householdId);
+
+                        // Delete household only if this user created it
+                        await supabase.from('households').delete()
+                          .eq('id', householdId)
+                          .eq('created_by', userId);
+                      }
+
+                      // Delete user-scoped data
                       await supabase.from('mira_conversations').delete().eq('user_id', userId);
-                      await supabase.from('meal_plans').delete().eq('user_id', userId);
-                      await supabase.from('recipes').delete().eq('user_id', userId);
-                      await supabase.from('household_members').delete().eq('household_id',
-                        supabase.from('households').select('id').eq('owner_id', userId)
-                      );
-                      await supabase.from('households').delete().eq('owner_id', userId);
-                      await supabase.from('receipts').delete().eq('user_id', userId);
-                      await supabase.from('purchase_history').delete().eq('user_id', userId);
-                      await supabase.from('favorites').delete().eq('user_id', userId);
-                      await supabase.from('store_locations').delete().eq('user_id', userId);
+                      await supabase.from('orders').delete().eq('user_id', userId);
+                      await supabase.from('loyalty_cards').delete().eq('user_id', userId);
+                      await supabase.from('push_tokens').delete().eq('user_id', userId);
                       await supabase.from('usage_tracking').delete().eq('user_id', userId);
+                      await supabase.from('error_logs').delete().eq('user_id', userId);
                       await supabase.from('subscriptions').delete().eq('user_id', userId);
-                      await supabase.from('user_preferences').delete().eq('user_id', userId);
+
+                      // Delete user profile last
                       await supabase.from('users').delete().eq('id', userId);
 
                       // Sign out and clear local state
@@ -374,7 +415,6 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    console.log('Sign out button pressed');
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -385,12 +425,9 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Signing out...');
               const result = await signOut();
-              console.log('Sign out result:', result);
               clearAuthStore();
-              console.log('Auth store cleared, navigating...');
-              router.replace('/(auth)/sign-in');
+              router.replace('/(auth)/landing');
             } catch (error) {
               console.error('Sign out error:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');
@@ -491,7 +528,7 @@ export default function SettingsScreen() {
                   </Text>
                   <View style={styles.upgradePricing}>
                     <Text style={styles.upgradePrice}>$47.88/year</Text>
-                    <Text style={styles.upgradeSavings}>Just $3.99/month</Text>
+                    <Text style={styles.upgradeSavings}>2-week free trial</Text>
                   </View>
                 </View>
                 <View style={styles.upgradeArrow}>
@@ -515,6 +552,22 @@ export default function SettingsScreen() {
             subtitle="Manage household members"
             onPress={() => router.push('/(app)/family')}
           />
+          {household?.invite_code && (
+            <SettingRow
+              icon="👥"
+              title="Invite Family"
+              subtitle={`Code: ${household.invite_code}`}
+              onPress={async () => {
+                try {
+                  await Share.share({
+                    message: `Join my household on MemoryAisle! Use invite code: ${household.invite_code}`,
+                  });
+                } catch (error) {
+                  Alert.alert('Invite Code', `Your household invite code is: ${household.invite_code}`);
+                }
+              }}
+            />
+          )}
           <SettingRow
             icon="💳"
             title="My Store Cards"
@@ -621,8 +674,13 @@ export default function SettingsScreen() {
             title="Rate MemoryAisle"
             subtitle="Love the app? Leave a review!"
             onPress={() => {
-              // iOS App Store URL - update with actual app ID when published
-              Linking.openURL('https://apps.apple.com/app/memoryaisle/id123456789?action=write-review');
+              // TODO: Replace APP_ID with actual Apple App ID from App Store Connect after first publish
+              const APP_ID = '';
+              if (APP_ID) {
+                Linking.openURL(`https://apps.apple.com/app/memoryaisle/id${APP_ID}?action=write-review`);
+              } else {
+                Alert.alert('Coming Soon', 'Rating will be available once the app is published on the App Store.');
+              }
             }}
           />
         </SectionCard>
