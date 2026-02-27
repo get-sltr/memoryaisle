@@ -1,6 +1,6 @@
 // app/_layout.tsx
 import { useEffect, useState, useRef } from 'react';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import { Stack, useRouter, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -37,10 +37,12 @@ export default function RootLayout() {
     if (iapInitialized.current) return;
     iapInitialized.current = true;
 
+    // Defer IAP init to avoid StoreKit crash on iPad M-series during startup
+    const startupDelay = Platform.isPad ? 4000 : 1500;
     setTimeout(() => {
-      iapService.setup().catch(() => {});
+      iapService.setup().catch((e) => { logger.error('IAP setup failed', e); });
       useSubscriptionStore.getState().initialize(userId);
-    }, 1500);
+    }, startupDelay);
   }
 
   async function initGeofencing(householdId: string) {

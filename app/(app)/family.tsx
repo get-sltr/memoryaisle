@@ -35,10 +35,13 @@ import { supabase } from '../../src/services/supabase';
 
 // Member role options
 const ROLE_OPTIONS = [
-  { id: 'parent', label: 'Parent', icon: '👨' },
-  { id: 'child', label: 'Child', icon: '👶' },
-  { id: 'grandparent', label: 'Grandparent', icon: '🧓' },
-  { id: 'other', label: 'Other', icon: '👤' },
+  { id: 'husband', label: 'Husband', icon: '👨' },
+  { id: 'wife', label: 'Wife', icon: '👩' },
+  { id: 'partner', label: 'Partner', icon: '💑' },
+  { id: 'son', label: 'Son', icon: '👦' },
+  { id: 'daughter', label: 'Daughter', icon: '👧' },
+  { id: 'mom', label: 'Mom', icon: '👩‍👧' },
+  { id: 'dad', label: 'Dad', icon: '👨‍👦' },
 ];
 
 // Dietary preference options

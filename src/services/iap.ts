@@ -1,4 +1,4 @@
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Dimensions } from 'react-native';
 import {
   initConnection,
   endConnection,
@@ -113,11 +113,16 @@ class IAPService {
   private async _doInitialize(): Promise<boolean> {
     try {
       try { await endConnection(); } catch {}
-      await delay(300); // Prevents M3 iPad dispatch_once crash
+      // iPad M-series chips need a longer delay before StoreKit init
+      // to avoid SKPaymentQueue dispatch_once SIGSEGV crash
+      const isIPad = Platform.isPad || (Dimensions.get('window').width >= 768);
+      await delay(isIPad ? 2000 : 300);
       await initConnection();
       this.initialized = true;
+      logger.info('IAP: connection initialized', { isIPad });
       return true;
     } catch (error) {
+      logger.error('IAP: initConnection failed', error);
       this.initialized = false;
       return false;
     }
