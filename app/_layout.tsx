@@ -38,7 +38,7 @@ export default function RootLayout() {
     iapInitialized.current = true;
 
     // Defer IAP init to avoid StoreKit crash on iPad M-series during startup
-    const startupDelay = Platform.isPad ? 4000 : 1500;
+    const startupDelay = Platform.isPad ? 3000 : 1500;
     setTimeout(() => {
       iapService.setup().catch((e) => { logger.error('IAP setup failed', e); });
       useSubscriptionStore.getState().initialize(userId);

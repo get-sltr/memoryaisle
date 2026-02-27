@@ -116,7 +116,7 @@ class IAPService {
       // iPad M-series chips need a longer delay before StoreKit init
       // to avoid SKPaymentQueue dispatch_once SIGSEGV crash
       const isIPad = Platform.isPad || (Dimensions.get('window').width >= 768);
-      await delay(isIPad ? 2000 : 300);
+      await delay(isIPad ? 1000 : 300);
       await initConnection();
       this.initialized = true;
       logger.info('IAP: connection initialized', { isIPad });
