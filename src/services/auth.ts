@@ -564,6 +564,26 @@ export async function saveDietaryPreferences(
   }
 }
 
+// Load dietary preferences for a household
+export async function loadDietaryPreferences(householdId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('households')
+      .select('dietary_preferences, cultural_preferences, family_profile')
+      .eq('id', householdId)
+      .single();
+
+    if (error) {
+      logger.error('Supabase error loading dietary preferences:', error);
+      return { success: false, data: null, error: error.message };
+    }
+    return { success: true, data };
+  } catch (err: any) {
+    logger.error('Unexpected error loading dietary preferences:', err);
+    return { success: false, data: null, error: err?.message };
+  }
+}
+
 // Listen to auth state changes
 export function onAuthStateChange(callback: (user: any) => void) {
   return supabase.auth.onAuthStateChange((event, session) => {

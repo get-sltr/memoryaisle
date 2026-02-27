@@ -203,8 +203,8 @@ class IAPService {
         },
       });
       return !error;
-    } catch (error) {
-      logger.error('IAP: activateSubscription network error', error);
+    } catch (err) {
+      logger.error('IAP: Exception thrown during activateSubscription:', err);
       return false;
     }
   }
