@@ -16,6 +16,11 @@ verify_jwt = true
 import_map = "./functions/mira-dictate/deno.json"
 entrypoint = "./functions/mira-dictate/index.ts"
 
+[functions.apple-verify-receipt]
+enabled = true
+verify_jwt = false  # Function validates user JWT internally via getUser()
+entrypoint = "./functions/apple-verify-receipt/index.ts"
+
 [functions.apple-server-notifications]
 enabled = true
 verify_jwt = false  # Apple sends raw HTTP POST — no Supabase JWT

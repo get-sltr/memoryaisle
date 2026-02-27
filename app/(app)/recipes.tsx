@@ -456,8 +456,9 @@ function RecipeDetailView({ recipe, onClose, onAddToList }: RecipeDetailViewProp
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.modalAddButtonGradient}
-          />
-          <Text style={styles.modalAddButtonText}>Add Ingredients to List</Text>
+          >
+            <Text style={styles.modalAddButtonText}>Add Ingredients to List</Text>
+          </LinearGradient>
         </Pressable>
 
         <View style={styles.modalBottomSpacer} />

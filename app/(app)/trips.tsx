@@ -627,10 +627,11 @@ export default function TripsScreen() {
                     <LinearGradient
                       colors={[COLORS.gold.light, COLORS.gold.base]}
                       style={styles.addToListButtonGradient}
-                    />
-                    <Text style={styles.addToListButtonText}>
-                      📋 Add Ingredients to List
-                    </Text>
+                    >
+                      <Text style={styles.addToListButtonText}>
+                        📋 Add Ingredients to List
+                      </Text>
+                    </LinearGradient>
                   </Pressable>
                 </>
               )}
