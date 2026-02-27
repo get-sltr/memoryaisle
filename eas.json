@@ -7,19 +7,11 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "SENTRY_ALLOW_FAILURE": "true"
-      }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "production": {
@@ -28,10 +20,6 @@
       "android": {
         "image": "ubuntu-24.04-jdk-17-ndk-r27b",
         "buildType": "app-bundle"
-      },
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "SENTRY_ALLOW_FAILURE": "true"
       }
     }
   }

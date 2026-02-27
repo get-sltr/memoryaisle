@@ -1,15 +1,11 @@
 // Error Tracking Service
-// Captures and logs errors to Sentry and the database for admin monitoring
-// Optimized for scale - minimal data, no PII, low sampling
+// Logs errors to the database for admin monitoring
 
 import React from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Sentry from '@sentry/react-native';
 import { supabase } from './supabase';
-
-const SENTRY_DSN = 'https://43c5dfa04aa07661d095cf7bdb5a824b@o4510662171820032.ingest.us.sentry.io/4510662173327360';
 
 // Rate limit DB inserts: max 10 errors per 60 seconds
 const DB_RATE_LIMIT_MAX = 10;
@@ -37,57 +33,6 @@ class ErrorTrackingService {
     if (this.isInitialized) return;
 
     try {
-      // Initialize Sentry - optimized for scale, no PII, minimal sampling.
-      // Sentry.init() automatically sets up global error handlers and
-      // promise rejection handlers. Do NOT override them manually.
-      Sentry.init({
-        dsn: SENTRY_DSN,
-
-        // Environment
-        environment: __DEV__ ? 'development' : 'production',
-        debug: false,
-
-        // Performance - minimal sampling to reduce costs at scale
-        tracesSampleRate: __DEV__ ? 0.1 : 0.01, // 1% in production
-        enableAutoSessionTracking: true,
-        sessionTrackingIntervalMillis: 60000,
-
-        // Privacy - NO PII
-        sendDefaultPii: false,
-        attachStacktrace: true,
-
-        // Strip any potential PII before sending
-        beforeSend(event) {
-          if (event.user) {
-            delete event.user.email;
-            delete event.user.username;
-            delete event.user.ip_address;
-          }
-
-          if (event.request) {
-            delete event.request.cookies;
-            delete event.request.headers;
-          }
-
-          // Only send errors and crashes in production
-          if (!__DEV__ && event.level && !['error', 'fatal'].includes(event.level)) {
-            return null;
-          }
-
-          return event;
-        },
-
-        // Only capture critical breadcrumbs
-        beforeBreadcrumb(breadcrumb) {
-          if (breadcrumb.category === 'ui.click') {
-            return null;
-          }
-          return breadcrumb;
-        },
-
-        maxBreadcrumbs: 20,
-      });
-
       this.defaultMetadata = {
         deviceType: Device.deviceType ? String(Device.deviceType) : 'unknown',
         osVersion: `${Platform.OS} ${Platform.Version}`,
@@ -103,14 +48,13 @@ class ErrorTrackingService {
   // Check if we can write to the DB without exceeding rate limit
   private canWriteToDb(): boolean {
     const now = Date.now();
-    // Remove timestamps outside the window
     this.dbInsertTimestamps = this.dbInsertTimestamps.filter(
       (t) => now - t < DB_RATE_LIMIT_WINDOW_MS
     );
     return this.dbInsertTimestamps.length < DB_RATE_LIMIT_MAX;
   }
 
-  // Log an error to Sentry and (non-blocking) to the database
+  // Log an error to the database
   async logError({
     error,
     severity = 'error',
@@ -128,30 +72,12 @@ class ErrorTrackingService {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
 
-      // Send to Sentry (always, this is the primary destination)
-      const severityToSentryLevel: Record<ErrorSeverity, string> = {
-        critical: 'fatal',
-        warning: 'warning',
-        info: 'info',
-        error: 'error',
-      };
-      const sentryLevel = severityToSentryLevel[severity] || 'error';
+      // Log to console in dev
+      if (__DEV__) {
+        console.error(`[${severity}/${type}] ${errorMessage}`);
+      }
 
-      Sentry.withScope((scope) => {
-        scope.setLevel(sentryLevel as Sentry.SeverityLevel);
-        scope.setTag('error_type', type);
-        if (component) scope.setTag('component', component);
-        scope.setExtras({ ...this.defaultMetadata, ...metadata });
-
-        if (error instanceof Error) {
-          Sentry.captureException(error);
-        } else {
-          Sentry.captureMessage(errorMessage);
-        }
-      });
-
-      // Also log to database (non-blocking, rate-limited)
-      // Uses cached userId from defaultMetadata -- no network call needed
+      // Log to database (non-blocking, rate-limited)
       if (this.canWriteToDb()) {
         this.dbInsertTimestamps.push(Date.now());
 
@@ -174,12 +100,9 @@ class ErrorTrackingService {
               console.error('Failed to log error to database:', insertError);
             }
           })
-          .catch(() => {
-            // Silently fail -- Sentry is the source of truth
-          });
+          .catch(() => {});
       }
     } catch (err) {
-      // Don't throw errors from error logging
       console.error('Error in error tracking:', err);
     }
   }
@@ -191,10 +114,7 @@ class ErrorTrackingService {
       severity: statusCode && statusCode >= 500 ? 'critical' : 'error',
       type: 'api',
       component: endpoint,
-      metadata: {
-        statusCode,
-        endpoint,
-      },
+      metadata: { statusCode, endpoint },
     });
   }
 
@@ -205,9 +125,7 @@ class ErrorTrackingService {
       severity: 'warning',
       type: 'network',
       component: 'NetworkRequest',
-      metadata: {
-        url,
-      },
+      metadata: { url },
     });
   }
 
@@ -218,9 +136,7 @@ class ErrorTrackingService {
       severity: 'info',
       type: 'validation',
       component,
-      metadata: {
-        field,
-      },
+      metadata: { field },
     });
   }
 
@@ -241,9 +157,7 @@ class ErrorTrackingService {
       severity: 'critical',
       type: 'crash',
       component: 'ErrorBoundary',
-      metadata: {
-        componentStack: errorInfo?.componentStack,
-      },
+      metadata: { componentStack: errorInfo?.componentStack },
     });
   }
 
@@ -252,15 +166,9 @@ class ErrorTrackingService {
     this.defaultMetadata.screen = screen;
   }
 
-  // Set user ID for context (anonymous ID only - no PII)
+  // Set user ID for context
   setUserId(userId: string | null) {
     this.defaultMetadata.userId = userId || undefined;
-
-    if (userId) {
-      Sentry.setUser({ id: userId });
-    } else {
-      Sentry.setUser(null);
-    }
   }
 }
 

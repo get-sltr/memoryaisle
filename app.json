@@ -56,13 +56,6 @@
       "expo-apple-authentication",
       "react-native-iap",
       [
-        "@sentry/react-native/expo",
-        {
-          "organization": "sltr",
-          "project": "memoryaisle"
-        }
-      ],
-      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "MemoryAisle needs background location access to alert you when you arrive at a saved grocery store so you don't forget your shopping list.",
