@@ -15,6 +15,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { logger } from '../../src/utils/logger';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
   getFrequentItems,
@@ -47,7 +48,7 @@ export default function FavoritesScreen() {
       const frequentItems = await getFrequentItems(household.id);
       setItems(frequentItems);
     } catch (error) {
-      console.error('Error loading favorites:', error);
+      logger.error('Error loading favorites:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -64,7 +65,8 @@ export default function FavoritesScreen() {
   }, [loadItems]);
 
   const handleToggleFavorite = useCallback(async (item: FavoriteItem) => {
-    const isNowFavorite = await toggleFavorite(household!.id, item.name);
+    if (!household?.id) return;
+    const isNowFavorite = await toggleFavorite(household.id, item.name);
     setItems(prev =>
       prev.map(i =>
         i.id === item.id ? { ...i, isFavorite: isNowFavorite } : i

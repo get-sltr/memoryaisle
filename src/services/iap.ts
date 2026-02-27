@@ -140,9 +140,13 @@ class IAPService {
 
     this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
       let activated = false;
-      try { activated = await this.activateSubscription(purchase); } catch (e) {}
-      
-      try { await finishTransaction({ purchase, isConsumable: false }); } catch (e) {}
+      try { activated = await this.activateSubscription(purchase); } catch (e) {
+        logger.error('IAP: activateSubscription failed after purchase', e);
+      }
+
+      try { await finishTransaction({ purchase, isConsumable: false }); } catch (e) {
+        logger.error('IAP: finishTransaction failed', e);
+      }
 
       if (this.purchaseResolver) {
         if (activated) this.purchaseResolver({ status: 'success' });
@@ -202,12 +206,23 @@ class IAPService {
   }
 
   async purchaseSubscription(): Promise<PurchaseResult> {
+    logger.info('IAP: purchaseSubscription called', { initialized: this.initialized });
     if (!this.initialized && !(await this.safeInitialize(2))) {
+      logger.error('IAP: could not initialize for purchase');
       return { status: 'error', message: 'Could not connect to the App Store.' };
     }
     if (!this.observerActive) this.setupGlobalTransactionObserver();
 
     try {
+      // Fetch products before purchase to ensure they are loaded
+      logger.info('IAP: fetching products before purchase');
+      const products = await fetchProducts({ skus: SUBSCRIPTION_SKUS, type: 'subs' });
+      logger.info('IAP: products fetched', { count: products?.length ?? 0 });
+      if (!products || products.length === 0) {
+        logger.error('IAP: no products available for purchase');
+        return { status: 'error', message: 'Subscription product not available. Please try again.' };
+      }
+
       const resultPromise = new Promise<PurchaseResult>((resolve) => {
         this.purchaseResolver = resolve;
         setTimeout(() => {
@@ -218,11 +233,13 @@ class IAPService {
         }, 120_000);
       });
 
+      logger.info('IAP: requesting subscription', { sku: IAP_PRODUCTS.PREMIUM_YEARLY });
       await requestSubscription({ sku: IAP_PRODUCTS.PREMIUM_YEARLY });
       return resultPromise;
     } catch (error: any) {
       this.purchaseResolver = null;
       if (error?.code === ErrorCode.UserCancelled) return { status: 'cancelled' };
+      logger.error('IAP: purchase failed', { code: error?.code, message: error?.message });
       return { status: 'error', message: 'Could not start purchase.' };
     }
   }
@@ -271,7 +288,10 @@ class IAPService {
         if (new Date(data.current_period_end) < new Date()) return { tier: 'free', status: 'none' };
       }
       return { tier: (data.tier || 'free') as SubscriptionTier, status: data.status || 'none', billingInterval: data.billing_interval, currentPeriodEnd: data.current_period_end, cancelAtPeriodEnd: data.cancel_at_period_end, productId: data.apple_product_id, transactionId: data.apple_transaction_id };
-    } catch { return { tier: 'free', status: 'none' }; }
+    } catch (error) {
+      logger.error('IAP: getSubscription failed, defaulting to free', error);
+      return { tier: 'free', status: 'none' };
+    }
   }
 
   canAccessFeature(subscription: SubscriptionInfo, feature: FeatureKey): boolean {

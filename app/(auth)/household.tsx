@@ -59,7 +59,7 @@ export default function HouseholdSetup() {
       setUser(updatedUser);
     }
 
-    console.log("DEBUG: Setting household:", household?.id);
+
     setHousehold(household);
     // Navigate directly to app to bypass root router check
     router.replace('/(auth)/dietary-setup');
@@ -101,7 +101,7 @@ export default function HouseholdSetup() {
       setUser(updatedUser);
     }
 
-    console.log("DEBUG: Setting household:", household?.id);
+
     setHousehold(household);
     // Navigate directly to app to bypass root router check
     router.replace('/(auth)/dietary-setup');

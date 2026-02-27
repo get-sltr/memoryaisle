@@ -171,31 +171,26 @@ export default function TripsScreen() {
       return;
     }
 
-    // Get all unchecked essential items from the food/supplies categories
+    // Add ALL unchecked items from every category
     let addedCount = 0;
     for (const category of currentPlan.checklists) {
-      // Focus on food and supplies categories
-      if (category.name.toLowerCase().includes('food') ||
-          category.name.toLowerCase().includes('supplies') ||
-          category.name.toLowerCase().includes('cooler')) {
-        for (const item of category.items) {
-          if (!item.isPacked) {
-            const added = await addItem(list.id, item.name);
-            if (added) addedCount++;
-          }
+      for (const item of category.items) {
+        if (!item.isPacked) {
+          const added = await addItem(list.id, item.name);
+          if (added) addedCount++;
         }
       }
     }
 
     if (addedCount > 0) {
       Alert.alert(
-        'Shopping List Generated!',
-        `${addedCount} items added to your shopping list for the trip.`
+        'Added to Shopping List!',
+        `${addedCount} trip items added to your shopping list.`
       );
     } else {
       Alert.alert(
         'Nothing to Add',
-        'All items are already packed or there are no food/supply items.'
+        'All items are already checked off.'
       );
     }
   }, [currentPlan, household?.id]);
@@ -218,12 +213,13 @@ export default function TripsScreen() {
         {/* Mira Message */}
         {miraMessage && (
           <View style={styles.miraCard}>
-            <BlurView intensity={40} tint="light" style={styles.miraCardBlur} />
+            <BlurView intensity={40} tint="light" style={styles.miraCardBlur} pointerEvents="none" />
             <LinearGradient
               colors={['rgba(255, 255, 255, 0.5)', 'rgba(250, 252, 255, 0.35)']}
               style={styles.miraCardGradient}
+              pointerEvents="none"
             />
-            <View style={styles.miraCardBorder} />
+            <View style={styles.miraCardBorder} pointerEvents="none" />
             <View style={styles.miraCardContent}>
               <View style={styles.miraAvatar}>
                 <LinearGradient
@@ -245,12 +241,13 @@ export default function TripsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>📋 Your Trip Plan</Text>
             <View style={styles.planCard}>
-              <BlurView intensity={35} tint="light" style={styles.planCardBlur} />
+              <BlurView intensity={35} tint="light" style={styles.planCardBlur} pointerEvents="none" />
               <LinearGradient
                 colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.25)']}
                 style={styles.planCardGradient}
+                pointerEvents="none"
               />
-              <View style={styles.planCardBorder} />
+              <View style={styles.planCardBorder} pointerEvents="none" />
               <View style={styles.planCardContent}>
                 <View style={styles.planHeader}>
                   <Text style={styles.planIcon}>{TRIP_TEMPLATES[currentPlan.type].icon}</Text>
@@ -318,7 +315,7 @@ export default function TripsScreen() {
                     style={styles.generateButtonGradient}
                   />
                   <Text style={styles.generateButtonText}>
-                    📋 Generate Shopping List
+                    🛒 Add Trip Items to Shopping List
                   </Text>
                 </Pressable>
               </View>
@@ -422,12 +419,13 @@ export default function TripsScreen() {
                 setShowRecipeModal(true);
               }}
             >
-              <BlurView intensity={25} tint="light" style={styles.recipeCardBlur} />
+              <BlurView intensity={25} tint="light" style={styles.recipeCardBlur} pointerEvents="none" />
               <LinearGradient
                 colors={['rgba(255, 255, 255, 0.35)', 'rgba(255, 255, 255, 0.2)']}
                 style={styles.recipeCardGradient}
+                pointerEvents="none"
               />
-              <View style={styles.recipeCardBorder} />
+              <View style={styles.recipeCardBorder} pointerEvents="none" />
               <View style={styles.recipeCardContent}>
                 <Text style={styles.recipeIcon}>{recipe.icon}</Text>
                 <View style={styles.recipeInfo}>
@@ -551,62 +549,78 @@ export default function TripsScreen() {
               />
               <View style={styles.modalCardBorder} />
 
+              {/* X close button */}
+              <Pressable
+                style={styles.recipeCloseX}
+                onPress={() => setShowRecipeModal(false)}
+              >
+                <Text style={styles.recipeCloseXText}>✕</Text>
+              </Pressable>
+
               {selectedRecipe && (
-                <ScrollView style={styles.recipeModalContent}>
-                  <Text style={styles.recipeModalIcon}>{selectedRecipe.icon}</Text>
-                  <Text style={styles.recipeModalTitle}>{selectedRecipe.name}</Text>
-                  <Text style={styles.recipeModalDescription}>{selectedRecipe.description}</Text>
+                <>
+                  <ScrollView
+                    style={styles.recipeModalContent}
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                    showsVerticalScrollIndicator={true}
+                    bounces={true}
+                  >
+                    <Text style={styles.recipeModalIcon}>{selectedRecipe.icon}</Text>
+                    <Text style={styles.recipeModalTitle}>{selectedRecipe.name}</Text>
+                    <Text style={styles.recipeModalDescription}>{selectedRecipe.description}</Text>
 
-                  <View style={styles.recipeModalMeta}>
-                    <View style={styles.metaItem}>
-                      <Text style={styles.metaValue}>{selectedRecipe.prepTime}</Text>
-                      <Text style={styles.metaLabel}>Prep</Text>
+                    <View style={styles.recipeModalMeta}>
+                      <View style={styles.metaItem}>
+                        <Text style={styles.metaValue}>{selectedRecipe.prepTime}</Text>
+                        <Text style={styles.metaLabel}>Prep</Text>
+                      </View>
+                      <View style={styles.metaItem}>
+                        <Text style={styles.metaValue}>{selectedRecipe.cookTime}</Text>
+                        <Text style={styles.metaLabel}>Cook</Text>
+                      </View>
+                      <View style={styles.metaItem}>
+                        <Text style={styles.metaValue}>{selectedRecipe.servings}</Text>
+                        <Text style={styles.metaLabel}>Servings</Text>
+                      </View>
                     </View>
-                    <View style={styles.metaItem}>
-                      <Text style={styles.metaValue}>{selectedRecipe.cookTime}</Text>
-                      <Text style={styles.metaLabel}>Cook</Text>
-                    </View>
-                    <View style={styles.metaItem}>
-                      <Text style={styles.metaValue}>{selectedRecipe.servings}</Text>
-                      <Text style={styles.metaLabel}>Servings</Text>
-                    </View>
-                  </View>
 
-                  <Text style={styles.recipeModalSection}>🥘 Ingredients</Text>
-                  {selectedRecipe.ingredients.map((ing, i) => (
-                    <View key={i} style={styles.ingredientRow}>
-                      <Text style={styles.ingredientAmount}>{ing.amount}</Text>
-                      <Text style={styles.ingredientItem}>{ing.item}</Text>
-                    </View>
-                  ))}
+                    <Text style={styles.recipeModalSection}>🥘 Ingredients</Text>
+                    {selectedRecipe.ingredients.map((ing, i) => (
+                      <View key={i} style={styles.ingredientRow}>
+                        <Text style={styles.ingredientAmount}>{ing.amount}</Text>
+                        <Text style={styles.ingredientItem}>{ing.item}</Text>
+                      </View>
+                    ))}
 
-                  <Text style={styles.recipeModalSection}>📝 Instructions</Text>
-                  {selectedRecipe.instructions.map((step, i) => (
-                    <View key={i} style={styles.instructionRow}>
-                      <Text style={styles.instructionNumber}>{i + 1}</Text>
-                      <Text style={styles.instructionText}>{step}</Text>
-                    </View>
-                  ))}
+                    <Text style={styles.recipeModalSection}>📝 Instructions</Text>
+                    {selectedRecipe.instructions.map((step, i) => (
+                      <View key={i} style={styles.instructionRow}>
+                        <Text style={styles.instructionNumber}>{i + 1}</Text>
+                        <Text style={styles.instructionText}>{step}</Text>
+                      </View>
+                    ))}
 
-                  {selectedRecipe.equipment && selectedRecipe.equipment.length > 0 && (
-                    <>
-                      <Text style={styles.recipeModalSection}>🔧 Equipment Needed</Text>
-                      <Text style={styles.equipmentText}>
-                        {selectedRecipe.equipment.join(' • ')}
-                      </Text>
-                    </>
-                  )}
+                    {selectedRecipe.equipment && selectedRecipe.equipment.length > 0 && (
+                      <>
+                        <Text style={styles.recipeModalSection}>🔧 Equipment Needed</Text>
+                        <Text style={styles.equipmentText}>
+                          {selectedRecipe.equipment.join(' • ')}
+                        </Text>
+                      </>
+                    )}
 
-                  {selectedRecipe.tips && selectedRecipe.tips.length > 0 && (
-                    <>
-                      <Text style={styles.recipeModalSection}>💡 Tips</Text>
-                      {selectedRecipe.tips.map((tip, i) => (
-                        <Text key={i} style={styles.tipText}>• {tip}</Text>
-                      ))}
-                    </>
-                  )}
+                    {selectedRecipe.tips && selectedRecipe.tips.length > 0 && (
+                      <>
+                        <Text style={styles.recipeModalSection}>💡 Tips</Text>
+                        {selectedRecipe.tips.map((tip, i) => (
+                          <Text key={i} style={styles.tipText}>• {tip}</Text>
+                        ))}
+                      </>
+                    )}
+                  </ScrollView>
 
-                  <Pressable style={styles.addToListButton} onPress={handleAddRecipeToList}>
+                  {/* Add Ingredients button - fixed at bottom, outside ScrollView */}
+                  <Pressable style={styles.addToListButtonFixed} onPress={handleAddRecipeToList}>
                     <LinearGradient
                       colors={[COLORS.gold.light, COLORS.gold.base]}
                       style={styles.addToListButtonGradient}
@@ -615,16 +629,7 @@ export default function TripsScreen() {
                       📋 Add Ingredients to List
                     </Text>
                   </Pressable>
-
-                  <Pressable
-                    style={styles.closeRecipeButton}
-                    onPress={() => setShowRecipeModal(false)}
-                  >
-                    <Text style={styles.closeRecipeButtonText}>Close</Text>
-                  </Pressable>
-
-                  <View style={{ height: 40 }} />
-                </ScrollView>
+                </>
               )}
             </Pressable>
           </BlurView>
@@ -1067,7 +1072,8 @@ const styles = StyleSheet.create({
     ...SHADOWS.glassElevated,
   },
   recipeModalCard: {
-    maxHeight: '80%',
+    maxHeight: '90%',
+    flexDirection: 'column',
   },
   modalCardBlur: {
     ...StyleSheet.absoluteFillObject,
@@ -1137,8 +1143,26 @@ const styles = StyleSheet.create({
   },
 
   // Recipe Modal
+  recipeCloseX: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    zIndex: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recipeCloseXText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
+  },
   recipeModalContent: {
     padding: SPACING.lg,
+    flex: 1,
   },
   recipeModalIcon: {
     fontSize: 60,
@@ -1236,6 +1260,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: SPACING.lg,
   },
+  addToListButtonFixed: {
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
   addToListButtonGradient: {
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -1244,14 +1274,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.white,
-  },
-  closeRecipeButton: {
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-  },
-  closeRecipeButtonText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text.secondary,
   },
   noRecipes: {
     padding: SPACING.xl,

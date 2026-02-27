@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS } from '../../src/constants/theme';
+import { logger } from '../../src/utils/logger';
 import { receiptService, ReceiptScanResult } from '../../src/services/receipt';
 import { useFeatureAccess } from '../../src/hooks/useSubscription';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -84,7 +85,7 @@ export default function ReceiptsScreen() {
         Alert.alert('Scan Complete', result.message || 'No matching items found on receipt.');
       }
     } catch (error) {
-      console.error('Scan error:', error);
+      logger.error('Scan error:', error);
       Alert.alert('Error', 'Failed to scan receipt. Please try again.');
     } finally {
       setIsScanning(false);

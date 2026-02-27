@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Svg, { Rect } from 'react-native-svg';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { logger } from '../../src/utils/logger';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useThemeStore } from '../../src/stores/themeStore';
 import {
@@ -90,7 +91,7 @@ export default function ReportsScreen() {
       setCategories(cats);
       setItems(purchaseItems);
     } catch (e) {
-      console.error('Failed to load reports:', e);
+      logger.error('Failed to load reports:', e);
     } finally {
       setIsLoading(false);
     }
@@ -133,7 +134,7 @@ export default function ReportsScreen() {
     try {
       await exportMonthToCSV(household.id, year, month);
     } catch (e) {
-      console.error('Export failed:', e);
+      logger.error('Export failed:', e);
     } finally {
       setExporting(false);
     }

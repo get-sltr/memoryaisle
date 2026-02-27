@@ -445,7 +445,7 @@ export default function MainList() {
     return unsubscribe;
   }, [list]);
 
-  const handleAddItem = async (confirmedAllergens?: string[]) => {
+  const handleAddItem = async (confirmedAllergens?: string[], skipDuplicateCheck?: boolean) => {
     if (isGuest) {
       requireAuth(() => {});
       return;
@@ -469,11 +469,32 @@ export default function MainList() {
           {
             text: 'Add Anyway',
             style: 'destructive',
-            onPress: () => handleAddItem(allergenMatch.map(a => a.allergen)),
+            onPress: () => handleAddItem(allergenMatch.map(a => a.allergen), true),
           },
         ]
       );
       return;
+    }
+
+    // Check for duplicates
+    if (!skipDuplicateCheck) {
+      const duplicate = items.find(
+        (item) => item.name.toLowerCase().trim() === itemName.toLowerCase()
+      );
+      if (duplicate) {
+        Alert.alert(
+          'Already on your list',
+          `"${itemName}" is already on your list. Add anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Anyway',
+              onPress: () => handleAddItem(confirmedAllergens, true),
+            },
+          ]
+        );
+        return;
+      }
     }
 
     // Add item with allergy record if user confirmed despite allergy
@@ -1150,48 +1171,56 @@ export default function MainList() {
         <Pressable style={styles.modalOverlay} onPress={() => setShowSaveStore(false)}>
           <BlurView intensity={90} tint="dark" style={styles.modalBlur}>
             <Pressable style={styles.qrCard} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.qrTitle}>Save Store</Text>
-              <Text style={styles.qrSubtitle}>Your list will auto-surface when you arrive here</Text>
-              <TextInput
-                style={styles.storeInput}
-                placeholder="Store name (e.g., Ralph's)"
-                placeholderTextColor={COLORS.text.secondary}
-                value={storeNameInput}
-                onChangeText={setStoreNameInput}
-                autoFocus
+              <BlurView intensity={70} tint="light" style={styles.qrCardBlur} />
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.4)', 'rgba(250, 252, 255, 0.3)', 'rgba(248, 250, 255, 0.2)']}
+                style={styles.qrCardGradient}
               />
-              <Pressable
-                style={[styles.shareButton, !storeNameInput.trim() && styles.buttonDisabled]}
-                onPress={async () => {
-                  if (!storeNameInput.trim() || !household?.id) return;
-                  const store = await geofenceService.saveCurrentLocationAsStore(household.id, storeNameInput.trim());
-                  if (store) {
-                    setShowSaveStore(false);
-                    setStoreNameInput('');
-                    Alert.alert('Saved!', `${store.name} saved. Your list will pop up when you arrive.`);
-                  } else {
-                    Alert.alert('Error', 'Could not save location. Check location permissions.');
-                  }
-                }}
-              >
-                <LinearGradient
-                  colors={[COLORS.gold.light, COLORS.gold.base]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.shareButtonGradient}
+              <View style={styles.qrCardBorder} />
+              <View style={styles.qrCardContent}>
+                <Text style={styles.qrTitle}>Save Store</Text>
+                <Text style={styles.qrSubtitle}>Your list will auto-surface when you arrive here</Text>
+                <TextInput
+                  style={styles.storeInput}
+                  placeholder="Store name (e.g., Ralph's)"
+                  placeholderTextColor={COLORS.text.secondary}
+                  value={storeNameInput}
+                  onChangeText={setStoreNameInput}
+                  autoFocus
                 />
-                <LinearGradient
-                  colors={['rgba(255, 240, 200, 0.5)', 'rgba(255, 220, 150, 0)']}
-                  start={{ x: 0.2, y: 0 }}
-                  end={{ x: 0.8, y: 0.6 }}
-                  style={styles.shareButtonShine}
-                />
-                <View style={styles.shareButtonBorder} />
-                <Text style={styles.shareButtonText}>Save Location</Text>
-              </Pressable>
-              <Pressable style={styles.closeButton} onPress={() => setShowSaveStore(false)}>
-                <Text style={styles.closeButtonText}>Cancel</Text>
-              </Pressable>
+                <Pressable
+                  style={[styles.shareButton, !storeNameInput.trim() && styles.buttonDisabled]}
+                  onPress={async () => {
+                    if (!storeNameInput.trim() || !household?.id) return;
+                    const store = await geofenceService.saveCurrentLocationAsStore(household.id, storeNameInput.trim());
+                    if (store) {
+                      setShowSaveStore(false);
+                      setStoreNameInput('');
+                      Alert.alert('Saved!', `${store.name} saved. Your list will pop up when you arrive.`);
+                    } else {
+                      Alert.alert('Error', 'Could not save location. Check location permissions.');
+                    }
+                  }}
+                >
+                  <LinearGradient
+                    colors={[COLORS.gold.light, COLORS.gold.base]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.shareButtonGradient}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255, 240, 200, 0.5)', 'rgba(255, 220, 150, 0)']}
+                    start={{ x: 0.2, y: 0 }}
+                    end={{ x: 0.8, y: 0.6 }}
+                    style={styles.shareButtonShine}
+                  />
+                  <View style={styles.shareButtonBorder} />
+                  <Text style={styles.shareButtonText}>Save Location</Text>
+                </Pressable>
+                <Pressable style={styles.closeButton} onPress={() => setShowSaveStore(false)}>
+                  <Text style={styles.closeButtonText}>Cancel</Text>
+                </Pressable>
+              </View>
             </Pressable>
           </BlurView>
         </Pressable>

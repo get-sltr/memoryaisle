@@ -25,6 +25,7 @@ import Animated, {
   FadeInUp,
   SlideInUp,
 } from 'react-native-reanimated';
+import { logger } from '../utils/logger';
 import {
   objectDetectionService,
   DetectedItem,
@@ -138,7 +139,7 @@ export function GroceryScanner({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
     } catch (error) {
-      console.error('Scan error:', error);
+      logger.error('Scan error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsScanning(false);

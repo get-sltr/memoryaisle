@@ -2,6 +2,7 @@
 // Provides admin dashboard data and management functions
 
 import { supabase } from './supabase';
+import { logger } from '../utils/logger';
 
 export interface AdminStats {
   total_users: number;
@@ -106,12 +107,12 @@ class AdminService {
     try {
       const { data, error } = await supabase.rpc('get_admin_dashboard_stats');
       if (error) {
-        console.error('Error fetching admin stats:', error);
+        logger.error('Error fetching admin stats:', error);
         return null;
       }
       return data as AdminStats;
     } catch (error) {
-      console.error('Error in getDashboardStats:', error);
+      logger.error('Error in getDashboardStats:', error);
       return null;
     }
   }
@@ -123,12 +124,12 @@ class AdminService {
         limit_count: limit,
       });
       if (error) {
-        console.error('Error fetching recent users:', error);
+        logger.error('Error fetching recent users:', error);
         return [];
       }
       return (data || []) as AdminUser[];
     } catch (error) {
-      console.error('Error in getRecentUsers:', error);
+      logger.error('Error in getRecentUsers:', error);
       return [];
     }
   }
@@ -140,12 +141,12 @@ class AdminService {
         limit_count: limit,
       });
       if (error) {
-        console.error('Error fetching recent subscriptions:', error);
+        logger.error('Error fetching recent subscriptions:', error);
         return [];
       }
       return (data || []) as AdminSubscription[];
     } catch (error) {
-      console.error('Error in getRecentSubscriptions:', error);
+      logger.error('Error in getRecentSubscriptions:', error);
       return [];
     }
   }
@@ -184,13 +185,13 @@ class AdminService {
       const { data, error } = await query;
 
       if (error) {
-        console.error('Error fetching error logs:', error);
+        logger.error('Error fetching error logs:', error);
         return [];
       }
 
       return (data || []) as ErrorLog[];
     } catch (error) {
-      console.error('Error in getErrorLogs:', error);
+      logger.error('Error in getErrorLogs:', error);
       return [];
     }
   }
@@ -222,7 +223,7 @@ class AdminService {
         .limit(days);
 
       if (error) {
-        console.error('Error fetching signup data:', error);
+        logger.error('Error fetching signup data:', error);
         return [];
       }
 
@@ -231,7 +232,7 @@ class AdminService {
         count: row.signups,
       }));
     } catch (error) {
-      console.error('Error in getSignupsByDay:', error);
+      logger.error('Error in getSignupsByDay:', error);
       return [];
     }
   }
@@ -250,13 +251,13 @@ class AdminService {
         .select('*');
 
       if (error) {
-        console.error('Error fetching subscription stats:', error);
+        logger.error('Error fetching subscription stats:', error);
         return [];
       }
 
       return data || [];
     } catch (error) {
-      console.error('Error in getSubscriptionStats:', error);
+      logger.error('Error in getSubscriptionStats:', error);
       return [];
     }
   }
@@ -275,13 +276,13 @@ class AdminService {
         .select('*');
 
       if (error) {
-        console.error('Error fetching error summary:', error);
+        logger.error('Error fetching error summary:', error);
         return [];
       }
 
       return data || [];
     } catch (error) {
-      console.error('Error in getErrorSummary:', error);
+      logger.error('Error in getErrorSummary:', error);
       return [];
     }
   }
@@ -290,7 +291,7 @@ class AdminService {
   async addAdmin(email: string, role: 'admin' | 'support' = 'admin'): Promise<boolean> {
     const isFounder = await this.isFounder();
     if (!isFounder) {
-      console.error('Only founders can add admins');
+      logger.error('Only founders can add admins');
       return false;
     }
 
@@ -315,7 +316,7 @@ class AdminService {
   async removeAdmin(adminId: string): Promise<boolean> {
     const isFounder = await this.isFounder();
     if (!isFounder) {
-      console.error('Only founders can remove admins');
+      logger.error('Only founders can remove admins');
       return false;
     }
 

@@ -336,7 +336,7 @@ export default function MealPlansScreen() {
             <Text style={styles.emptyIcon}>🍽️</Text>
             <Text style={styles.emptyTitle}>No Active Plan</Text>
             <Text style={styles.emptyText}>Ask Mira to create a personalized meal plan for you</Text>
-            <Pressable style={styles.askMiraButton} onPress={() => router.push('/(app)/mira')}>
+            <Pressable style={styles.askMiraButton} onPress={() => router.push('/(app)')}>
               <LinearGradient
                 colors={[COLORS.gold.base, COLORS.gold.dark]}
                 style={StyleSheet.absoluteFill}

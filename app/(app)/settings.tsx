@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { logger } from '../../src/utils/logger';
 import { SubscriptionModal } from '../../src/components/SubscriptionModal';
 import { useSubscription } from '../../src/hooks/useSubscription';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -177,7 +178,7 @@ export default function SettingsScreen() {
 
               Alert.alert('Success', 'Mira conversation history cleared');
             } catch (error: any) {
-              console.error('Error clearing Mira history:', error);
+              logger.error('Error clearing Mira history:', error);
               Alert.alert('Error', 'Failed to clear conversation history');
             } finally {
               setIsClearingHistory(false);
@@ -296,7 +297,7 @@ export default function SettingsScreen() {
                       const { error: rpcError } = await supabase.rpc('delete_user_account');
 
                       if (rpcError) {
-                        console.warn('RPC failed, attempting client-side profile deletion', rpcError);
+                        logger.warn('RPC failed, attempting client-side profile deletion', rpcError);
                         await supabase.from('users').delete().eq('id', userId);
                       }
 
@@ -310,7 +311,7 @@ export default function SettingsScreen() {
                         [{ text: 'OK', onPress: () => router.replace('/(auth)/landing') }]
                       );
                     } catch (error) {
-                      console.error('Account deletion error:', error);
+                      logger.error('Account deletion error:', error);
                       Alert.alert('Error', 'Failed to delete account. Please contact support@memoryaisle.app');
                     } finally {
                       setIsDeletingAccount(false);
@@ -436,7 +437,7 @@ export default function SettingsScreen() {
               clearAuthStore();
               router.replace('/(auth)/landing');
             } catch (error) {
-              console.error('Sign out error:', error);
+              logger.error('Sign out error:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },

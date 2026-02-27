@@ -115,12 +115,6 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
-          name="mira"
-          options={{
-            title: 'Mira',
-          }}
-        />
-        <Tabs.Screen
           name="checkout"
           options={{
             title: 'Checkout',

@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { logger } from '../../src/utils/logger';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../src/constants/theme';
 import { supabase } from '../../src/services/supabase';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -90,7 +91,7 @@ export default function OrdersPage() {
         calculateSpending(Object.values(groupedOrders));
       }
     } catch (error) {
-      console.error('Error loading orders:', error);
+      logger.error('Error loading orders:', error);
     } finally {
       setIsLoading(false);
     }

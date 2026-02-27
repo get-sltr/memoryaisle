@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { logger } from '../../src/utils/logger';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getRecipes, addRecipeToList } from '../../src/services/recipes';
 import type { Recipe } from '../../src/types';
@@ -132,7 +133,7 @@ export default function RecipesScreen() {
       // Show default recipes if user has none
       setRecipes(data.length > 0 ? data : DEFAULT_RECIPES);
     } catch (error) {
-      console.error('Error loading recipes:', error);
+      logger.error('Error loading recipes:', error);
       // Show defaults on error too
       setRecipes(DEFAULT_RECIPES);
     } finally {
@@ -151,7 +152,7 @@ export default function RecipesScreen() {
   }, [loadRecipes]);
 
   const handleOpenMira = () => {
-    router.push('/(app)/mira');
+    router.push('/(app)');
   };
 
   const handleAddToList = useCallback(async (recipe: Recipe) => {
@@ -169,7 +170,7 @@ export default function RecipesScreen() {
         Alert.alert('Error', 'Could not add ingredients to list. Please try again.');
       }
     } catch (error) {
-      console.error('Error adding to list:', error);
+      logger.error('Error adding to list:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setAddingToList(null);

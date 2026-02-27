@@ -12,11 +12,8 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Image,
 } from 'react-native';
 
-// Custom Recipe Icon
-const RECIPE_ICON = require('../../assets/icons/Recipe.png');
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -205,31 +202,6 @@ export function MiraChat({
               </View>
             )}
 
-            {/* Example recipe card */}
-            {conversation.length > 0 && conversation[conversation.length - 1]?.role === 'assistant' && (
-              <View style={styles.recipeCard}>
-                <View style={styles.recipeTitleRow}>
-                  <Image source={RECIPE_ICON} style={styles.recipeIcon} />
-                  <Text style={styles.recipeTitle}>Honey Garlic Chicken</Text>
-                </View>
-                <Text style={styles.recipeMeta}>35 min • 4 servings</Text>
-                <View style={styles.ingredients}>
-                  {['2 lbs chicken thighs', '4 cloves garlic, minced', '1/3 cup honey', '1/4 cup soy sauce'].map((ing, i) => (
-                    <View key={i} style={styles.ingredientRow}>
-                      <Text style={styles.ingredientCheck}>{'\u2713'}</Text>
-                      <Text style={styles.ingredientText}>{ing}</Text>
-                    </View>
-                  ))}
-                </View>
-                <Pressable style={styles.addAllButton}>
-                  <LinearGradient
-                    colors={[COLORS.gold.light, COLORS.gold.base]}
-                    style={styles.addAllButtonGradient}
-                  />
-                  <Text style={styles.addAllButtonText}>Add All Ingredients to List</Text>
-                </Pressable>
-              </View>
-            )}
           </ScrollView>
 
           {/* Input Area */}
@@ -449,70 +421,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-  },
-
-  // Recipe Card
-  recipeCard: {
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginTop: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.frost.border,
-  },
-  recipeTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.xs,
-  },
-  recipeIcon: {
-    width: 24,
-    height: 24,
-    resizeMode: 'contain',
-  },
-  recipeTitle: {
-    fontFamily: 'Georgia',
-    fontSize: FONT_SIZES.lg,
-    color: COLORS.text.primary,
-  },
-  recipeMeta: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    marginBottom: SPACING.md,
-  },
-  ingredients: {
-    marginBottom: SPACING.md,
-  },
-  ingredientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  ingredientCheck: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gold.base,
-  },
-  ingredientText: {
-    fontSize: FONT_SIZES.sm + 1,
-    color: COLORS.text.primary,
-  },
-  addAllButton: {
-    paddingVertical: 14,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  addAllButtonGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  addAllButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.white,
   },
 
   // Input Area

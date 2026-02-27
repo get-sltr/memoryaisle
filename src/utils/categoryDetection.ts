@@ -1,5 +1,6 @@
 // Smart grocery item categorization with Supabase backend
 import { supabase } from '../services/supabase';
+import { logger } from './logger';
 
 export type GroceryCategory =
   | 'produce'
@@ -155,7 +156,7 @@ async function loadKeywords(): Promise<Map<string, string>> {
 
       return keywordCache;
     } catch (error) {
-      console.error('Failed to load keywords from DB:', error);
+      logger.error('Failed to load keywords from DB:', error);
       // Use fallback keywords only
       keywordCache = new Map(Object.entries(FALLBACK_KEYWORDS));
       return keywordCache;

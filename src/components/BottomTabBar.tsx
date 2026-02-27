@@ -85,7 +85,6 @@ function AnimatedRoseGoldBorder() {
 // Custom tab icons
 const TAB_ICONS = {
   list: require('../../assets/icons/list_tab.png'),
-  plan: require('../../assets/icons/plan_tab.png'),
   recipes: require('../../assets/icons/Recipes_tab.png'),
 };
 
@@ -113,8 +112,22 @@ const ListIcon = ({ active }: { active: boolean }) => (
   <GlassTabIcon source={TAB_ICONS.list} active={active} />
 );
 
-const PlanIcon = ({ active }: { active: boolean }) => (
-  <GlassTabIcon source={TAB_ICONS.plan} active={active} />
+const CalendarIcon = ({ active }: { active: boolean }) => (
+  <View style={[styles.iconGlassWrapper, active && styles.iconGlassWrapperActive]}>
+    <LinearGradient
+      colors={active
+        ? ['rgba(212, 175, 55, 0.25)', 'rgba(212, 175, 55, 0.1)']
+        : ['rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.2)']}
+      style={StyleSheet.absoluteFill}
+    />
+    <LinearGradient
+      colors={['rgba(255, 255, 255, 0.7)', 'transparent']}
+      start={{ x: 0.3, y: 0 }}
+      end={{ x: 0.7, y: 0.6 }}
+      style={styles.iconShine}
+    />
+    <Text style={[styles.icon, active && styles.iconActive]}>📅</Text>
+  </View>
 );
 
 const FavsIcon = ({ active }: { active: boolean }) => (
@@ -180,7 +193,7 @@ interface TabConfig {
 
 const TABS: TabConfig[] = [
   { name: 'index', label: 'List', icon: ListIcon },
-  { name: 'mealplan', label: 'Plan', icon: PlanIcon },
+  { name: 'calendar', label: 'Calendar', icon: CalendarIcon },
   { name: 'receipts', label: 'Scan', icon: ReceiptScanIcon },
   { name: 'favorites', label: 'Favs', icon: FavsIcon },
   { name: 'settings', label: 'Menu', icon: SettingsIcon },

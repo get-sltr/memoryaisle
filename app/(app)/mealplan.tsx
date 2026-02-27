@@ -16,6 +16,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { logger } from '../../src/utils/logger';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
@@ -179,7 +180,7 @@ export default function MealPlanScreen() {
 
       setWeekMeals(mealsByDay);
     } catch (error) {
-      console.error('Failed to load meals:', error);
+      logger.error('Failed to load meals:', error);
     } finally {
       setIsLoading(false);
     }
@@ -329,7 +330,7 @@ export default function MealPlanScreen() {
       }
       closeModal();
     } catch (error) {
-      console.error('Failed to save meal:', error);
+      logger.error('Failed to save meal:', error);
       Alert.alert('Error', 'Failed to save meal. Please try again.');
     }
   }, [editingDayId, editingDbMealId, mealName, mealType, mealCalories, mealNotes, closeModal, household, user, currentPlan, weekOffset, getDateFromDayId]);
@@ -354,7 +355,7 @@ export default function MealPlanScreen() {
                 [dayId]: (prev[dayId] || []).filter(m => m.id !== mealId),
               }));
             } catch (error) {
-              console.error('Failed to delete meal:', error);
+              logger.error('Failed to delete meal:', error);
               Alert.alert('Error', 'Failed to delete meal. Please try again.');
             }
           },
@@ -374,7 +375,6 @@ export default function MealPlanScreen() {
       'Quick Actions',
       'What would you like to do?',
       [
-        { text: 'Ask Mira for Ideas', onPress: () => router.push('/mira') },
         { text: 'View Trip Recipes', onPress: () => router.push('/trips') },
         { text: 'Cancel', style: 'cancel' },
       ]

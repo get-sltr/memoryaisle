@@ -13,6 +13,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
+import { logger } from '../../src/utils/logger';
 import {
   GlassIconWrapper,
   PlanGlassIcon,
@@ -203,7 +204,7 @@ export default function CalendarScreen() {
                 [{ text: 'View List', onPress: () => router.push('/(app)') }]
               );
             } catch (error) {
-              console.error('Failed to add holiday items:', error);
+              logger.error('Failed to add holiday items:', error);
               Alert.alert('Error', 'Failed to add items to list');
             }
           },
@@ -273,7 +274,7 @@ export default function CalendarScreen() {
                 [{ text: 'View List', onPress: () => router.push('/(app)') }]
               );
             } catch (error) {
-              console.error('Failed to add tradition items:', error);
+              logger.error('Failed to add tradition items:', error);
               Alert.alert('Error', 'Failed to add items to list');
             }
           },

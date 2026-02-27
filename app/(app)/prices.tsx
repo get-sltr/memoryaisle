@@ -14,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { logger } from '../../src/utils/logger';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../src/constants/theme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useThemeStore } from '../../src/stores/themeStore';
@@ -61,7 +62,7 @@ export default function PricesPage() {
       setAlerts(alertsData);
       setSpending(spendingData);
     } catch (error) {
-      console.error('Error loading price data:', error);
+      logger.error('Error loading price data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -139,7 +140,7 @@ export default function PricesPage() {
     >
       <View style={styles.alertIcon}>
         <Text style={styles.alertIconText}>
-          {item.type === 'price_drop' ? '!' : item.type === 'good_deal' ? '!' : '!'}
+          {item.type === 'price_drop' ? '\u2193' : item.type === 'good_deal' ? '\u2605' : '\u2191'}
         </Text>
       </View>
       <View style={styles.alertContent}>
@@ -154,7 +155,7 @@ export default function PricesPage() {
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <Text style={styles.emptyIcon}>
-        {activeTab === 'trends' ? '!' : activeTab === 'alerts' ? '!' : '!'}
+        {activeTab === 'trends' ? '\uD83D\uDCC8' : activeTab === 'alerts' ? '\uD83D\uDD14' : '\uD83D\uDCCB'}
       </Text>
       <Text style={styles.emptyTitle}>
         {activeTab === 'trends'

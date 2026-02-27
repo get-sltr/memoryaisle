@@ -25,6 +25,7 @@ import { getActiveList, addItem } from '../services/lists';
 import { saveMiraMealPlan } from '../services/mealPlans';
 import { SwipeButton } from './SwipeButton';
 import { supabase } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BUTTON_SIZE = 72;
@@ -97,7 +98,7 @@ export function MiraFloatingButton() {
           setFamilyDietaryInfo(restrictions.join('. '));
         }
       } catch (e) {
-        console.log('Could not fetch family dietary info');
+        logger.error('Could not fetch family dietary info', e);
       }
     }
     fetchFamilyDietary();

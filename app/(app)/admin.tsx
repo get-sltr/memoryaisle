@@ -22,6 +22,7 @@ import {
   AdminSubscription,
   ErrorLog,
 } from '../../src/services/admin';
+import { logger } from '../../src/utils/logger';
 import {
   COLORS,
   FONT_SIZES,
@@ -208,7 +209,7 @@ export default function AdminDashboard() {
       setSubscriptions(subsData);
       setErrors(errorsData);
     } catch (error) {
-      console.error('Error loading admin data:', error);
+      logger.error('Error loading admin data:', error);
     }
   }, []);
 

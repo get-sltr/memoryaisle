@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { supabase } from '../services/supabase';
 import { iapService, SubscriptionInfo } from '../services/iap';
 import { adminService } from '../services/admin';
+import { logger } from '../utils/logger';
 
 interface SubscriptionState {
   subscription: SubscriptionInfo | null;
@@ -34,6 +35,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const sub = await iapService.getSubscription(userId);
       set({ subscription: sub, isLoading: false });
     } catch (error) {
+      logger.error('Subscription fetch failed, defaulting to free', error);
       set({ subscription: { tier: 'free', status: 'none' }, isLoading: false });
     }
   },

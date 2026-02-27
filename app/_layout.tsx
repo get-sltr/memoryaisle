@@ -8,6 +8,7 @@ import { supabase } from '../src/services/supabase';
 import { useAuthStore } from '../src/stores/authStore';
 import { getCurrentUser, getUserHousehold } from '../src/services/auth';
 import { errorTracking } from '../src/services/errorTracking';
+import { logger } from '../src/utils/logger';
 import { notificationService } from '../src/services/notifications';
 import { geofenceService } from '../src/services/geofence';
 import { iapService } from '../src/services/iap';
@@ -48,7 +49,7 @@ export default function RootLayout() {
     try {
       await geofenceService.startMonitoring(householdId);
     } catch (error) {
-      console.warn('Geofence init failed:', error);
+      logger.warn('Geofence init failed:', error);
     }
   }
 
@@ -66,15 +67,17 @@ export default function RootLayout() {
           const data = response.notification.request.content.data;
           if (!data?.type) return;
           switch (data.type) {
-            case 'list_shared': case 'item_added': case 'item_checked': if (data.listId) router.push(`/(app)/list/${data.listId}`); break;
+            case 'list_shared': case 'item_added': case 'item_checked': router.push('/(app)'); break;
             case 'meal_plan_ready': router.push('/(app)/meal-plans'); break;
             case 'store_nearby': router.push('/(app)'); break;
-            case 'family_joined': router.push('/(app)/household'); break;
-            case 'mira_suggestion': router.push('/(app)/mira'); break;
+            case 'family_joined': router.push('/(app)/family'); break;
+            case 'mira_suggestion': router.push('/(app)'); break;
           }
         }
       );
-    } catch {}
+    } catch (error) {
+      logger.error('Notification init failed:', error);
+    }
   }
 
   useEffect(() => {
