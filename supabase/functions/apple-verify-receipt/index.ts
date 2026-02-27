@@ -71,6 +71,33 @@ Deno.serve(async (req) => {
     // Use service_role to write subscription status (bypasses RLS)
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Check if this transaction was blacklisted from a deleted account
+    const txnIdToCheck = originalTransactionId || transactionId;
+    const { data: blacklisted } = await serviceClient
+      .from('deleted_subscription_transactions')
+      .select('subscription_expiry')
+      .eq('original_transaction_id', txnIdToCheck)
+      .maybeSingle();
+
+    if (blacklisted) {
+      const isExpired = !blacklisted.subscription_expiry
+        || new Date(blacklisted.subscription_expiry) < new Date();
+
+      if (isExpired) {
+        // Subscription from a deleted account and it's expired — block restore
+        return new Response(
+          JSON.stringify({ error: 'This subscription was associated with a deleted account' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      // Still active (Apple requires honoring paid time) — allow and remove from blacklist
+      await serviceClient
+        .from('deleted_subscription_transactions')
+        .delete()
+        .eq('original_transaction_id', txnIdToCheck);
+    }
+
     const subscriptionData: Record<string, unknown> = {
       user_id: user.id,
       tier: 'premium',

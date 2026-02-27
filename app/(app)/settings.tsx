@@ -235,78 +235,13 @@ export default function SettingsScreen() {
 
                     setIsDeletingAccount(true);
                     try {
-                      const userId = user?.id;
-                      if (!userId) throw new Error('No user ID');
-
-                      const { data: userProfile } = await supabase
-                        .from('users')
-                        .select('household_id')
-                        .eq('id', userId)
-                        .single();
-
-                      const householdId = userProfile?.household_id;
-
-                      if (householdId) {
-                        // 1. Check if this user OWNS the household
-                        const { data: household } = await supabase
-                          .from('households')
-                          .select('created_by')
-                          .eq('id', householdId)
-                          .single();
-
-                        const isOwner = household?.created_by === userId;
-
-                        if (isOwner) {
-                          // User is the owner: Nuke the whole household
-
-                          // 1. Evict all users from this household first to prevent foreign key errors
-                          await supabase
-                            .from('users')
-                            .update({ household_id: null })
-                            .eq('household_id', householdId);
-
-                          // 2. Delete all child data
-                          const { data: lists } = await supabase.from('grocery_lists').select('id').eq('household_id', householdId);
-                          if (lists && lists.length > 0) {
-                            await supabase.from('list_items').delete().in('list_id', lists.map(l => l.id));
-                          }
-                          await supabase.from('grocery_lists').delete().eq('household_id', householdId);
-
-                          const { data: mealPlans } = await supabase.from('meal_plans').select('id').eq('household_id', householdId);
-                          if (mealPlans && mealPlans.length > 0) {
-                            await supabase.from('planned_meals').delete().in('meal_plan_id', mealPlans.map(mp => mp.id));
-                          }
-                          await supabase.from('meal_plans').delete().eq('household_id', householdId);
-
-                          await supabase.from('recipes').delete().eq('household_id', householdId);
-                          await supabase.from('family_members').delete().eq('household_id', householdId);
-                          await supabase.from('purchase_history').delete().eq('household_id', householdId);
-                          await supabase.from('purchase_patterns').delete().eq('household_id', householdId);
-
-                          // Delete the household record itself
-                          await supabase.from('households').delete().eq('id', householdId);
-                        } else {
-                          // User is just a member: Only remove them from the family
-                          await supabase.from('family_members').delete().eq('user_id', userId);
-                        }
-                      }
-
-                      // 2. Delete user-scoped data
-                      await supabase.from('mira_conversations').delete().eq('user_id', userId);
-                      await supabase.from('orders').delete().eq('user_id', userId);
-                      await supabase.from('loyalty_cards').delete().eq('user_id', userId);
-                      await supabase.from('push_tokens').delete().eq('user_id', userId);
-                      await supabase.from('usage_tracking').delete().eq('user_id', userId);
-                      await supabase.from('error_logs').delete().eq('user_id', userId);
-                      await supabase.from('subscriptions').delete().eq('user_id', userId);
-
-                      // 3. CRITICAL: Delete the actual Auth Identity via RPC
-                      // This deletes auth.users AND public.users securely
+                      // Single server-side RPC handles everything atomically:
+                      // archives subscription to blacklist, handles household,
+                      // deletes auth.users (cascades all child data)
                       const { error: rpcError } = await supabase.rpc('delete_user_account');
 
                       if (rpcError) {
-                        logger.warn('RPC failed, attempting client-side profile deletion', rpcError);
-                        await supabase.from('users').delete().eq('id', userId);
+                        throw rpcError;
                       }
 
                       // Sign out and clear local state
