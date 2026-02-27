@@ -338,12 +338,12 @@ export default function SettingsScreen() {
 
     Alert.alert(
       'Manage Subscription',
-      'To manage your Premium subscription, please go to:\n\nSettings > Apple ID > Subscriptions',
+      'You can manage or cancel your Premium subscription through Apple.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Close', style: 'cancel' },
         {
-          text: 'Open Settings',
-          onPress: () => Linking.openURL('app-settings:'),
+          text: 'Manage Subscription',
+          onPress: () => Linking.openURL('https://apps.apple.com/account/subscriptions'),
         },
       ]
     );

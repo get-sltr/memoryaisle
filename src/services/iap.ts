@@ -217,19 +217,13 @@ class IAPService {
     }
   }
 
-  /** Setup on app cold start */
+  /** Setup on app cold start — only initializes connection + observer.
+   *  Does NOT auto-activate from device receipts, because StoreKit
+   *  returns receipts tied to the Apple ID, not the app account.
+   *  Activation only happens from explicit purchase or Restore Purchases. */
   async setup(): Promise<void> {
     if (!(await this.safeInitialize(2))) return;
     this.setupGlobalTransactionObserver();
-    try {
-      const purchases = await getAvailablePurchases();
-      const activeSub = purchases?.find((p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
-      if (activeSub) {
-        const activated = await this.activateSubscription(activeSub);
-        if (activated) await finishTransaction({ purchase: activeSub, isConsumable: false });
-        this.notifyStatusChange();
-      }
-    } catch {}
   }
 
   async getSubscriptionProduct(): Promise<IAPProduct | null> {
