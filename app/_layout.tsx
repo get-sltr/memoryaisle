@@ -1,6 +1,6 @@
 // app/_layout.tsx
 import { useEffect, useState, useRef } from 'react';
-import { View, Platform } from 'react-native';
+import { View, Platform, Dimensions } from 'react-native';
 import { Stack, useRouter, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -16,39 +16,40 @@ import { useSubscriptionStore } from '../src/stores/subscriptionStore';
 
 SplashScreen.preventAutoHideAsync();
 
-const SPLASH_TIMEOUT_MS = 8000;
+const SPLASH_TIMEOUT_MS = 6000; // Reduced to 6s for App Store review
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const { setUser, setHousehold, setLoading } = useAuthStore();
   const router = useRouter();
-  
-  // Expo Router hook to check if navigation tree is mounted
-  const rootNavigationState = useRootNavigationState(); 
-  
+  const rootNavigationState = useRootNavigationState();
+
   const notificationsInitialized = useRef(false);
   const geofenceInitialized = useRef(false);
   const iapInitialized = useRef(false);
-  
-  // 1. Create a queue for cold-boot notifications
   const pendingNotificationRoute = useRef<string | null>(null);
 
   function initIAP(userId: string) {
     if (iapInitialized.current) return;
     iapInitialized.current = true;
 
-    // Defer IAP init to avoid StoreKit crash on iPad M-series during startup
-    const startupDelay = Platform.isPad ? 3000 : 1500;
-    setTimeout(() => {
-      iapService.setup().catch((e) => { logger.error('IAP setup failed', e); });
-      useSubscriptionStore.getState().initialize(userId);
+    // iPad M-series safe delay
+    const isIPad = Platform.isPad || (Dimensions.get('window').width >= 768);
+    const startupDelay = isIPad ? 4000 : 1500;
+
+    setTimeout(async () => {
+      try {
+        await iapService.setup();
+        useSubscriptionStore.getState().initialize(userId);
+      } catch (e) {
+        logger.error('IAP setup failed', e);
+      }
     }, startupDelay);
   }
 
   async function initGeofencing(householdId: string) {
     if (geofenceInitialized.current) return;
     geofenceInitialized.current = true;
-
     try {
       await geofenceService.startMonitoring(householdId);
     } catch (error) {
@@ -68,7 +69,7 @@ export default function RootLayout() {
         (response) => {
           const data = response.notification.request.content.data;
           if (!data?.type) return;
-          
+
           let targetRoute = '';
           switch (data.type) {
             case 'list_shared': case 'item_added': case 'item_checked': targetRoute = '/(app)'; break;
@@ -79,7 +80,6 @@ export default function RootLayout() {
           }
 
           if (targetRoute) {
-            // 2. If app isn't ready to route yet, queue it. Otherwise, route immediately.
             if (!isReady || !rootNavigationState?.key) {
               pendingNotificationRoute.current = targetRoute;
             } else {
@@ -104,9 +104,7 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }
 
-    const timeout = setTimeout(() => {
-      finishInit();
-    }, SPLASH_TIMEOUT_MS);
+    const timeout = setTimeout(() => finishInit(), SPLASH_TIMEOUT_MS);
 
     async function initAuth() {
       try {
@@ -145,12 +143,10 @@ export default function RootLayout() {
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setHousehold(null);
-        
         iapInitialized.current = false;
         notificationsInitialized.current = false;
         geofenceInitialized.current = false;
         pendingNotificationRoute.current = null;
-        
         iapService.disconnect();
         notificationService.removeNotificationListeners();
         geofenceService.stopMonitoring();
@@ -166,7 +162,6 @@ export default function RootLayout() {
     };
   }, []);
 
-  // 3. Effect to handle queued routes once navigation mounts
   useEffect(() => {
     if (isReady && rootNavigationState?.key && pendingNotificationRoute.current) {
       router.push(pendingNotificationRoute.current as any);
