@@ -105,7 +105,9 @@ BEGIN
       -- purchase_history, purchase_patterns)
       DELETE FROM households WHERE id = v_household_id;
     ELSE
-      -- Just a member: detach from household
+      -- Just a member: remove their family_members record, then detach
+      DELETE FROM family_members WHERE user_id = v_user_id;
+
       UPDATE users
       SET household_id = NULL
       WHERE id = v_user_id;
@@ -113,7 +115,17 @@ BEGIN
   END IF;
 
   -- ------------------------------------------------
-  -- 3. Delete auth.users row — cascades everything else:
+  -- 3. Clear FK references that lack ON DELETE SET NULL/CASCADE.
+  --    Without this, DELETE FROM auth.users fails with FK violation.
+  -- ------------------------------------------------
+  UPDATE admin_users SET created_by = NULL WHERE created_by = v_user_id;
+  UPDATE error_logs SET resolved_by = NULL WHERE resolved_by = v_user_id;
+  UPDATE founder_family_codes SET created_by = NULL WHERE created_by = v_user_id;
+  UPDATE founder_family_codes SET redeemed_by = NULL WHERE redeemed_by = v_user_id;
+  UPDATE founder_family_members SET granted_by = NULL WHERE granted_by = v_user_id;
+
+  -- ------------------------------------------------
+  -- 4. Delete auth.users row — cascades everything else:
   --    CASCADE: public.users → loyalty_cards, orders, push_tokens,
   --             wallet_credits, promo_redemptions, gift_cards
   --    CASCADE: subscriptions, usage_tracking, admin_users,
