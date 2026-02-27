@@ -24,6 +24,7 @@ import { signOut } from '../../src/services/auth';
 import { adminService } from '../../src/services/admin';
 import { useThemeStore } from '../../src/stores/themeStore';
 import { supabase } from '../../src/services/supabase';
+import { SUBSCRIPTION_TIERS } from '../../src/services/iap';
 import {
   COLORS,
   FONT_SIZES,
@@ -90,10 +91,11 @@ function SettingRow({
 
 export default function SettingsScreen() {
   const { user, household, signOut: clearAuthStore } = useAuthStore();
-  const { subscription, isPremium, isLoading, restorePurchases, refresh } = useSubscription();
+  const { subscription, isPremium, isLoading, product, restorePurchases, refresh } = useSubscription();
   const { isDark, toggleTheme } = useThemeStore();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
@@ -119,30 +121,37 @@ export default function SettingsScreen() {
     loadMiraPreference();
   }, [user?.id]);
 
-  // Handle Mira history toggle - save to Supabase
+  // Handle Mira history toggle - save to Supabase with rollback on failure
   const handleMiraHistoryToggle = async (value: boolean) => {
     if (!user?.id) return;
 
+    const previousValue = saveMiraHistory;
     setSaveMiraHistory(value);
 
-    // Get current profile and merge with new setting
-    const { data: userData } = await supabase
-      .from('users')
-      .select('profile')
-      .eq('id', user.id)
-      .single();
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('profile')
+        .eq('id', user.id)
+        .single();
 
-    const currentProfile = userData?.profile || {};
+      const currentProfile = userData?.profile || {};
 
-    await supabase
-      .from('users')
-      .update({
-        profile: {
-          ...currentProfile,
-          save_mira_history: value,
-        },
-      })
-      .eq('id', user.id);
+      const { error } = await supabase
+        .from('users')
+        .update({
+          profile: {
+            ...currentProfile,
+            save_mira_history: value,
+          },
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+    } catch {
+      // Revert the toggle on failure
+      setSaveMiraHistory(previousValue);
+    }
   };
 
   // Clear Mira conversation history
@@ -189,7 +198,6 @@ export default function SettingsScreen() {
     adminService.isAdmin().then(setIsAdmin);
     checkNotificationStatus();
 
-    // Re-check notification status when app returns from background (user might have changed settings)
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         checkNotificationStatus();
@@ -203,7 +211,7 @@ export default function SettingsScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'This will permanently delete your account and all associated data including your family profiles, grocery lists, meal plans, and conversation history. This action cannot be undone.',
+      'This will permanently delete your account and data. If you are the household owner, this will also delete all family grocery lists and meal plans. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -220,7 +228,7 @@ export default function SettingsScreen() {
                   style: 'destructive',
                   onPress: async (text: string | undefined) => {
                     if (text?.toUpperCase() !== 'DELETE') {
-                      Alert.alert('Cancelled', 'Account deletion cancelled. You typed: ' + (text || 'nothing'));
+                      Alert.alert('Cancelled', 'Account deletion cancelled.');
                       return;
                     }
 
@@ -229,7 +237,6 @@ export default function SettingsScreen() {
                       const userId = user?.id;
                       if (!userId) throw new Error('No user ID');
 
-                      // Get user's household_id for household-scoped deletions
                       const { data: userProfile } = await supabase
                         .from('users')
                         .select('household_id')
@@ -238,48 +245,44 @@ export default function SettingsScreen() {
 
                       const householdId = userProfile?.household_id;
 
-                      // Delete household-scoped data
                       if (householdId) {
-                        // Get grocery list IDs to delete their items first
-                        const { data: lists } = await supabase
-                          .from('grocery_lists')
-                          .select('id')
-                          .eq('household_id', householdId);
-
-                        if (lists && lists.length > 0) {
-                          await supabase
-                            .from('list_items')
-                            .delete()
-                            .in('list_id', lists.map(l => l.id));
-                        }
-                        await supabase.from('grocery_lists').delete().eq('household_id', householdId);
-
-                        // Get meal plan IDs to delete planned meals first
-                        const { data: mealPlans } = await supabase
-                          .from('meal_plans')
-                          .select('id')
-                          .eq('household_id', householdId);
-
-                        if (mealPlans && mealPlans.length > 0) {
-                          await supabase
-                            .from('planned_meals')
-                            .delete()
-                            .in('meal_plan_id', mealPlans.map(mp => mp.id));
-                        }
-                        await supabase.from('meal_plans').delete().eq('household_id', householdId);
-
-                        await supabase.from('recipes').delete().eq('household_id', householdId);
-                        await supabase.from('family_members').delete().eq('household_id', householdId);
-                        await supabase.from('purchase_history').delete().eq('household_id', householdId);
-                        await supabase.from('purchase_patterns').delete().eq('household_id', householdId);
-
-                        // Delete household only if this user created it
-                        await supabase.from('households').delete()
+                        // 1. Check if this user OWNS the household
+                        const { data: household } = await supabase
+                          .from('households')
+                          .select('created_by')
                           .eq('id', householdId)
-                          .eq('created_by', userId);
+                          .single();
+
+                        const isOwner = household?.created_by === userId;
+
+                        if (isOwner) {
+                          // User is the owner: Nuke the whole household
+                          const { data: lists } = await supabase.from('grocery_lists').select('id').eq('household_id', householdId);
+                          if (lists && lists.length > 0) {
+                            await supabase.from('list_items').delete().in('list_id', lists.map(l => l.id));
+                          }
+                          await supabase.from('grocery_lists').delete().eq('household_id', householdId);
+
+                          const { data: mealPlans } = await supabase.from('meal_plans').select('id').eq('household_id', householdId);
+                          if (mealPlans && mealPlans.length > 0) {
+                            await supabase.from('planned_meals').delete().in('meal_plan_id', mealPlans.map(mp => mp.id));
+                          }
+                          await supabase.from('meal_plans').delete().eq('household_id', householdId);
+
+                          await supabase.from('recipes').delete().eq('household_id', householdId);
+                          await supabase.from('family_members').delete().eq('household_id', householdId);
+                          await supabase.from('purchase_history').delete().eq('household_id', householdId);
+                          await supabase.from('purchase_patterns').delete().eq('household_id', householdId);
+
+                          // Delete the household record itself
+                          await supabase.from('households').delete().eq('id', householdId);
+                        } else {
+                          // User is just a member: Only remove them from the family
+                          await supabase.from('family_members').delete().eq('user_id', userId);
+                        }
                       }
 
-                      // Delete user-scoped data
+                      // 2. Delete user-scoped data
                       await supabase.from('mira_conversations').delete().eq('user_id', userId);
                       await supabase.from('orders').delete().eq('user_id', userId);
                       await supabase.from('loyalty_cards').delete().eq('user_id', userId);
@@ -288,8 +291,14 @@ export default function SettingsScreen() {
                       await supabase.from('error_logs').delete().eq('user_id', userId);
                       await supabase.from('subscriptions').delete().eq('user_id', userId);
 
-                      // Delete user profile last
-                      await supabase.from('users').delete().eq('id', userId);
+                      // 3. CRITICAL: Delete the actual Auth Identity via RPC
+                      // This deletes auth.users AND public.users securely
+                      const { error: rpcError } = await supabase.rpc('delete_user_account');
+
+                      if (rpcError) {
+                        console.warn('RPC failed, attempting client-side profile deletion', rpcError);
+                        await supabase.from('users').delete().eq('id', userId);
+                      }
 
                       // Sign out and clear local state
                       await signOut();
@@ -357,7 +366,6 @@ export default function SettingsScreen() {
         ]
       );
     } else {
-      // undetermined - request permission
       const { status } = await Notifications.requestPermissionsAsync();
       setNotificationStatus(status);
       if (status === 'granted') {
@@ -384,7 +392,6 @@ export default function SettingsScreen() {
       return;
     }
 
-    // For Apple IAP, users manage subscriptions through iOS Settings
     Alert.alert(
       'Manage Subscription',
       'To manage your Premium subscription, please go to:\n\nSettings > Apple ID > Subscriptions',
@@ -399,7 +406,7 @@ export default function SettingsScreen() {
   };
 
   const handleRestorePurchases = async () => {
-    setIsManaging(true);
+    setIsRestoring(true);
     try {
       const success = await restorePurchases();
       if (success) {
@@ -408,9 +415,9 @@ export default function SettingsScreen() {
         Alert.alert('Not Found', 'No previous purchases were found to restore.');
       }
     } catch (error) {
-      Alert.alert('Error', 'Unable to open subscription management');
+      Alert.alert('Error', 'Unable to restore purchases. Please try again.');
     } finally {
-      setIsManaging(false);
+      setIsRestoring(false);
     }
   };
 
@@ -447,6 +454,11 @@ export default function SettingsScreen() {
       year: 'numeric',
     });
   };
+
+  // Display price from live product (StoreKit) or fall back to SUBSCRIPTION_TIERS
+  const displayPrice = product?.localizedPrice
+    ? `${product.localizedPrice}/year`
+    : `$${SUBSCRIPTION_TIERS.premium.price.yearly}/year`;
 
   return (
     <ScreenWrapper>
@@ -527,7 +539,7 @@ export default function SettingsScreen() {
                     Unlimited Mira AI, meal plans, receipt scanning & more
                   </Text>
                   <View style={styles.upgradePricing}>
-                    <Text style={styles.upgradePrice}>$47.88/year</Text>
+                    <Text style={styles.upgradePrice}>{displayPrice}</Text>
                     <Text style={styles.upgradeSavings}>2-week free trial</Text>
                   </View>
                 </View>
@@ -537,6 +549,14 @@ export default function SettingsScreen() {
               </Pressable>
             </>
           )}
+
+          {/* Restore Purchases -- Apple Guideline 3.1.2 requires this to be visible */}
+          <SettingRow
+            icon="🔄"
+            title="Restore Purchases"
+            subtitle={isRestoring ? 'Restoring...' : 'Restore a previous subscription'}
+            onPress={isRestoring ? undefined : handleRestorePurchases}
+          />
         </SectionCard>
 
         {/* Account Section */}

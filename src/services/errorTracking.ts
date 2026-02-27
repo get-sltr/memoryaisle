@@ -11,6 +11,10 @@ import { supabase } from './supabase';
 
 const SENTRY_DSN = 'https://43c5dfa04aa07661d095cf7bdb5a824b@o4510662171820032.ingest.us.sentry.io/4510662173327360';
 
+// Rate limit DB inserts: max 10 errors per 60 seconds
+const DB_RATE_LIMIT_MAX = 10;
+const DB_RATE_LIMIT_WINDOW_MS = 60_000;
+
 type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
 type ErrorType = 'crash' | 'api' | 'validation' | 'network' | 'unknown';
 
@@ -26,24 +30,27 @@ interface ErrorMetadata {
 class ErrorTrackingService {
   private isInitialized = false;
   private defaultMetadata: ErrorMetadata = {};
+  private dbInsertTimestamps: number[] = [];
 
   // Initialize error tracking with app context
   async initialize() {
     if (this.isInitialized) return;
 
     try {
-      // Initialize Sentry - optimized for scale, no PII, minimal sampling
+      // Initialize Sentry - optimized for scale, no PII, minimal sampling.
+      // Sentry.init() automatically sets up global error handlers and
+      // promise rejection handlers. Do NOT override them manually.
       Sentry.init({
         dsn: SENTRY_DSN,
 
         // Environment
         environment: __DEV__ ? 'development' : 'production',
-        debug: false, // Never debug in production
+        debug: false,
 
         // Performance - minimal sampling to reduce costs at scale
         tracesSampleRate: __DEV__ ? 0.1 : 0.01, // 1% in production
         enableAutoSessionTracking: true,
-        sessionTrackingIntervalMillis: 60000, // 1 minute
+        sessionTrackingIntervalMillis: 60000,
 
         // Privacy - NO PII
         sendDefaultPii: false,
@@ -51,20 +58,18 @@ class ErrorTrackingService {
 
         // Strip any potential PII before sending
         beforeSend(event) {
-          // Remove user email/name if accidentally captured
           if (event.user) {
             delete event.user.email;
             delete event.user.username;
             delete event.user.ip_address;
           }
 
-          // Remove request data that might contain PII
           if (event.request) {
             delete event.request.cookies;
             delete event.request.headers;
           }
 
-          // Only send errors and crashes, not info/warnings in production
+          // Only send errors and crashes in production
           if (!__DEV__ && event.level && !['error', 'fatal'].includes(event.level)) {
             return null;
           }
@@ -74,17 +79,14 @@ class ErrorTrackingService {
 
         // Only capture critical breadcrumbs
         beforeBreadcrumb(breadcrumb) {
-          // Skip UI breadcrumbs to reduce data
           if (breadcrumb.category === 'ui.click') {
             return null;
           }
           return breadcrumb;
         },
 
-        // Limit breadcrumbs to reduce payload size
         maxBreadcrumbs: 20,
       });
-      console.log('Sentry initialized');
 
       this.defaultMetadata = {
         deviceType: Device.deviceType ? String(Device.deviceType) : 'unknown',
@@ -92,45 +94,23 @@ class ErrorTrackingService {
         appVersion: Constants.expoConfig?.version || '1.0.0',
       };
 
-      // Set up global error handler for uncaught errors
-      const originalHandler = ErrorUtils.getGlobalHandler();
-      ErrorUtils.setGlobalHandler((error, isFatal) => {
-        this.logError({
-          error,
-          severity: isFatal ? 'critical' : 'error',
-          type: 'crash',
-          component: 'GlobalErrorHandler',
-        });
-
-        // Call original handler
-        if (originalHandler) {
-          originalHandler(error, isFatal);
-        }
-      });
-
-      // Set up promise rejection handler
-      const originalRejectionHandler = globalThis.onunhandledrejection;
-      globalThis.onunhandledrejection = (event: any) => {
-        this.logError({
-          error: event?.reason || new Error('Unhandled Promise Rejection'),
-          severity: 'error',
-          type: 'unknown',
-          component: 'PromiseRejectionHandler',
-        });
-
-        if (originalRejectionHandler) {
-          (originalRejectionHandler as any)(event);
-        }
-      };
-
       this.isInitialized = true;
-      console.log('Error tracking initialized');
     } catch (err) {
       console.error('Failed to initialize error tracking:', err);
     }
   }
 
-  // Log an error to Sentry and the database
+  // Check if we can write to the DB without exceeding rate limit
+  private canWriteToDb(): boolean {
+    const now = Date.now();
+    // Remove timestamps outside the window
+    this.dbInsertTimestamps = this.dbInsertTimestamps.filter(
+      (t) => now - t < DB_RATE_LIMIT_WINDOW_MS
+    );
+    return this.dbInsertTimestamps.length < DB_RATE_LIMIT_MAX;
+  }
+
+  // Log an error to Sentry and (non-blocking) to the database
   async logError({
     error,
     severity = 'error',
@@ -145,12 +125,10 @@ class ErrorTrackingService {
     metadata?: Record<string, any>;
   }) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
 
-      // Send to Sentry
+      // Send to Sentry (always, this is the primary destination)
       const severityToSentryLevel: Record<ErrorSeverity, string> = {
         critical: 'fatal',
         warning: 'warning',
@@ -172,22 +150,33 @@ class ErrorTrackingService {
         }
       });
 
-      // Also log to database
-      const { error: insertError } = await supabase.from('error_logs').insert({
-        user_id: user?.id || null,
-        error_type: type,
-        error_message: errorMessage,
-        error_stack: errorStack,
-        component,
-        severity,
-        metadata: {
-          ...this.defaultMetadata,
-          ...metadata,
-        },
-      });
+      // Also log to database (non-blocking, rate-limited)
+      // Uses cached userId from defaultMetadata -- no network call needed
+      if (this.canWriteToDb()) {
+        this.dbInsertTimestamps.push(Date.now());
 
-      if (insertError) {
-        console.error('Failed to log error to database:', insertError);
+        supabase
+          .from('error_logs')
+          .insert({
+            user_id: this.defaultMetadata.userId || null,
+            error_type: type,
+            error_message: errorMessage,
+            error_stack: errorStack,
+            component,
+            severity,
+            metadata: {
+              ...this.defaultMetadata,
+              ...metadata,
+            },
+          })
+          .then(({ error: insertError }) => {
+            if (insertError) {
+              console.error('Failed to log error to database:', insertError);
+            }
+          })
+          .catch(() => {
+            // Silently fail -- Sentry is the source of truth
+          });
       }
     } catch (err) {
       // Don't throw errors from error logging
@@ -267,9 +256,8 @@ class ErrorTrackingService {
   setUserId(userId: string | null) {
     this.defaultMetadata.userId = userId || undefined;
 
-    // Set anonymous user ID in Sentry - NO email, name, or other PII
     if (userId) {
-      Sentry.setUser({ id: userId }); // Only anonymous UUID
+      Sentry.setUser({ id: userId });
     } else {
       Sentry.setUser(null);
     }
@@ -294,7 +282,9 @@ export function withErrorBoundary<P extends object>(
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-      errorTracking.captureException(error, { componentStack: errorInfo.componentStack || undefined });
+      errorTracking.captureException(error, {
+        componentStack: errorInfo.componentStack || undefined,
+      });
     }
 
     render() {

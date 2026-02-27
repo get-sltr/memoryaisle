@@ -16,8 +16,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.memoryaisle.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We use your location to show your grocery list when you arrive at a store.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to notify you when you arrive at a store so you never forget your list.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
         "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns.",
         "NSMicrophoneUsageDescription": "Mira uses your microphone to listen for 'Hey Mira' and to hear items you want to add to your list.",
         "ITSAppUsesNonExemptEncryption": false
@@ -63,7 +65,10 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Memoryaisle to use your location to auto-show your list at stores.",
+          "locationAlwaysAndWhenInUsePermission": "MemoryAisle needs background location access to alert you when you arrive at a saved grocery store so you don't forget your shopping list.",
+          "locationAlwaysPermission": "MemoryAisle needs background location access to alert you when you arrive at a saved grocery store so you don't forget your shopping list.",
+          "locationWhenInUsePermission": "MemoryAisle uses your location to help you save the grocery stores you are currently visiting.",
+          "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
@@ -80,14 +85,14 @@
       ]
     ],
     "extra": {
-      "eas": {
-        "projectId": "6224c734-c82d-4852-848b-3ef0fde9e8f4"
-      },
       "router": {},
       "supabaseUrl": "",
       "supabaseAnonKey": "",
-      "davoiceLicenseKey": ""
+      "davoiceLicenseKey": "",
+      "eas": {
+        "projectId": "143688ac-a91a-449d-a4a8-dd6f9663a7a8"
+      }
     },
-    "owner": "memoryaisle10s-organization"
+    "owner": "memoryaisle"
   }
 }

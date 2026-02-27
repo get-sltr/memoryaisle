@@ -1,8 +1,9 @@
-// Geofence Service - Auto-surface list when arriving at a store
 import * as Location from 'expo-location';
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 import type { StoreLocation } from '../types';
+
+// Geofence Service - Auto-surface list when arriving at a store
 
 const GEOFENCE_RADIUS = 100; // meters
 
@@ -45,14 +46,14 @@ class GeofenceService {
     lon2: number
   ): number {
     const R = 6371e3; // Earth's radius in meters
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+    const p1 = (lat1 * Math.PI) / 180;
+    const p2 = (lat2 * Math.PI) / 180;
+    const dp = ((lat2 - lat1) * Math.PI) / 180;
+    const dl = ((lon2 - lon1) * Math.PI) / 180;
 
     const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      Math.sin(dp / 2) * Math.sin(dp / 2) +
+      Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
@@ -196,8 +197,9 @@ class GeofenceService {
 
   // Check if user is near any saved store
   private checkProximity(coords: { latitude: number; longitude: number }) {
-    let isInsideAnyStore = false;
+    let foundStoreId: string | null = null;
 
+    // Find if we are currently inside any store's radius
     for (const store of this.savedStores) {
       const distance = this.getDistance(
         coords.latitude,
@@ -207,36 +209,37 @@ class GeofenceService {
       );
 
       if (distance <= GEOFENCE_RADIUS) {
-        isInsideAnyStore = true;
-        // Only trigger arrival if we weren't already at this store
+        foundStoreId = store.id;
+
+        // If we just arrived at a NEW store
         if (this.currentStoreId !== store.id) {
+          // If we were inside another store previously, trigger departure first
+          if (this.currentStoreId) {
+            const previousStore = this.savedStores.find(
+              (s) => s.id === this.currentStoreId
+            );
+            if (previousStore) this.onDeparture?.(previousStore);
+          }
+
           this.currentStoreId = store.id;
           logger.log(`Arrived at ${store.name}`);
           this.onArrival?.(store);
         }
-        return;
+        break; // Stop checking once we find the store we are inside
       }
     }
 
-    // User is not inside any store - check if they just left
-    if (this.currentStoreId && !isInsideAnyStore) {
+    // If we are not inside any store, but we were previously inside one
+    if (!foundStoreId && this.currentStoreId) {
       const leftStore = this.savedStores.find(
         (s) => s.id === this.currentStoreId
       );
       if (leftStore) {
-        const distance = this.getDistance(
-          coords.latitude,
-          coords.longitude,
-          leftStore.latitude,
-          leftStore.longitude
-        );
-        // Trigger departure when user exits (past the radius)
-        if (distance > GEOFENCE_RADIUS) {
-          logger.log(`Leaving ${leftStore.name}`);
-          this.onDeparture?.(leftStore);
-          this.currentStoreId = null;
-        }
+        logger.log(`Leaving ${leftStore.name}`);
+        this.onDeparture?.(leftStore);
       }
+      // Always clear the state, even if the store was deleted from the list
+      this.currentStoreId = null;
     }
   }
 
@@ -248,6 +251,8 @@ class GeofenceService {
     }
     this.isMonitoring = false;
     this.onArrival = null;
+    this.onDeparture = null;
+    this.currentStoreId = null;
     this.householdId = null;
     logger.log('Geofence monitoring stopped');
   }

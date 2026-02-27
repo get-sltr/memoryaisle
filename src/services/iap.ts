@@ -1,19 +1,9 @@
-// In-App Purchases Service -- StoreKit 2 via react-native-iap v14
-// Handles iOS subscriptions through App Store.
-//
-// ARCHITECTURE: StoreKit 2 on-device verification + server-side activation.
-// iOS verifies transactions at the OS level. After a verified purchase,
-// the client sends transaction data to apple-verify-receipt Edge Function
-// which writes subscription status using service_role (bypassing RLS).
-// Apple Server Notifications V2 webhook is the ultimate source of truth
-// for renewals, expirations, refunds, and revocations.
-
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import {
   initConnection,
   endConnection,
   fetchProducts,
-  requestPurchase,
+  requestSubscription,
   getAvailablePurchases,
   finishTransaction,
   purchaseUpdatedListener,
@@ -26,34 +16,22 @@ import {
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 
-// Product IDs — must match App Store Connect exactly
 export const IAP_PRODUCTS = {
   PREMIUM_YEARLY: 'com.memoryaisle.app.premium.yearly',
 } as const;
 
 const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_YEARLY];
 
-// Subscription tier definitions
 export const SUBSCRIPTION_TIERS = {
   free: {
     id: 'free',
     name: 'Free',
     price: { monthly: 0, yearly: 0 },
     features: {
-      maxLists: 2,
-      maxItemsPerList: 50,
-      miraQueriesPerDay: 10,
-      recipesPerDay: 3,
-      mealPlans: false,
-      familyMembers: 1,
-      voiceCommands: true,
-      receiptScanning: false,
-      tripPlanning: false,
-      traditions: 2,
-      favorites: 10,
-      storeGeofencing: 1,
-      smartCalendar: false,
-      prioritySupport: false,
+      maxLists: 2, maxItemsPerList: 50, miraQueriesPerDay: 10, recipesPerDay: 3,
+      mealPlans: false, familyMembers: 1, voiceCommands: true, receiptScanning: false,
+      tripPlanning: false, traditions: 2, favorites: 10, storeGeofencing: 1,
+      smartCalendar: false, prioritySupport: false,
     },
   },
   premium: {
@@ -61,20 +39,10 @@ export const SUBSCRIPTION_TIERS = {
     name: 'Premium',
     price: { monthly: 9.99, yearly: 49.99 },
     features: {
-      maxLists: -1,
-      maxItemsPerList: -1,
-      miraQueriesPerDay: -1,
-      recipesPerDay: -1,
-      mealPlans: true,
-      familyMembers: 7,
-      voiceCommands: true,
-      receiptScanning: true,
-      tripPlanning: true,
-      traditions: -1,
-      favorites: -1,
-      storeGeofencing: -1,
-      smartCalendar: true,
-      prioritySupport: true,
+      maxLists: -1, maxItemsPerList: -1, miraQueriesPerDay: -1, recipesPerDay: -1,
+      mealPlans: true, familyMembers: 7, voiceCommands: true, receiptScanning: true,
+      tripPlanning: true, traditions: -1, favorites: -1, storeGeofencing: -1,
+      smartCalendar: true, prioritySupport: true,
     },
   },
 } as const;
@@ -94,467 +62,271 @@ export interface SubscriptionInfo {
 }
 
 export interface IAPProduct {
-  productId: string;
-  title: string;
-  description: string;
-  localizedPrice: string;
-  price: string;
-  currency: string;
+  productId: string; title: string; description: string;
+  localizedPrice: string; price: string; currency: string;
 }
 
-// Purchase result returned to callers
 export type PurchaseResult =
   | { status: 'success' }
   | { status: 'cancelled' }
   | { status: 'pending' }
   | { status: 'error'; message: string };
 
+type StatusChangeCallback = () => void;
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 class IAPService {
   private initialized = false;
+  private initializing: Promise<boolean> | null = null;
+  private observerActive = false;
   private purchaseUpdateSub: EventSubscription | null = null;
   private purchaseErrorSub: EventSubscription | null = null;
   private purchaseResolver: ((result: PurchaseResult) => void) | null = null;
+  private statusChangeListeners = new Set<StatusChangeCallback>();
 
-  // ─── Connection ──────────────────────────────────────────────
+  onStatusChange(callback: StatusChangeCallback): () => void {
+    this.statusChangeListeners.add(callback);
+    return () => this.statusChangeListeners.delete(callback);
+  }
+
+  private notifyStatusChange(): void {
+    for (const cb of this.statusChangeListeners) {
+      try { cb(); } catch (error) { logger.error('IAP: status change listener error', error); }
+    }
+  }
 
   async initialize(): Promise<boolean> {
     if (this.initialized) return true;
-    if (Platform.OS !== 'ios') {
-      logger.warn('IAP: only supported on iOS');
+    if (Platform.OS !== 'ios') return false;
+
+    if (!AppState.currentState) {
+      logger.warn('IAP: native bridge not ready, deferring initialization');
       return false;
     }
 
+    if (this.initializing) return this.initializing;
+    this.initializing = this._doInitialize();
+    try { return await this.initializing; } finally { this.initializing = null; }
+  }
+
+  private async _doInitialize(): Promise<boolean> {
     try {
-      // Clear any stale native connection (e.g. after hot reload)
       try { await endConnection(); } catch {}
+      await delay(300); // Prevents M3 iPad dispatch_once crash
       await initConnection();
       this.initialized = true;
-      logger.log('IAP: connected to App Store');
       return true;
     } catch (error) {
-      logger.error('IAP: failed to connect', error);
+      this.initialized = false;
       return false;
     }
   }
 
-  // ─── Transaction Listeners ───────────────────────────────────
+  private async safeInitialize(retries = 2): Promise<boolean> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      if (await this.initialize()) return true;
+      if (attempt < retries) {
+        this.initialized = false;
+        await delay(500 * attempt);
+      }
+    }
+    return false;
+  }
 
-  startTransactionListener(
-    userId: string,
-    onStatusChange: () => void
-  ): void {
+  private setupGlobalTransactionObserver(): void {
+    if (this.observerActive) return;
     this.removeTransactionListeners();
 
-    this.purchaseUpdateSub = purchaseUpdatedListener(
-      async (purchase: Purchase) => {
-        logger.log('IAP: purchase update received', purchase.productId);
+    this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
+      let activated = false;
+      try { activated = await this.activateSubscription(purchase); } catch (e) {}
+      
+      try { await finishTransaction({ purchase, isConsumable: false }); } catch (e) {}
 
-        try {
-          // StoreKit 2 verifies transactions at the OS level.
-          // Write the subscription status directly to the DB.
-          const activated = await this.activateSubscription(purchase);
-
-          // Finish the transaction with Apple regardless — so it's not re-delivered
-          await finishTransaction({ purchase, isConsumable: false });
-
-          if (this.purchaseResolver) {
-            if (activated) {
-              this.purchaseResolver({ status: 'success' });
-            } else {
-              this.purchaseResolver({
-                status: 'error',
-                message: 'Could not activate subscription. Please try Restore Purchases.',
-              });
-            }
-            this.purchaseResolver = null;
-          }
-
-          // Notify caller to refresh subscription state from DB
-          onStatusChange();
-        } catch (error) {
-          logger.error('IAP: failed to process purchase', error);
-          // Still finish the transaction so Apple doesn't redeliver
-          try { await finishTransaction({ purchase, isConsumable: false }); } catch {}
-
-          if (this.purchaseResolver) {
-            this.purchaseResolver({
-              status: 'error',
-              message: 'Failed to activate subscription. Please try Restore Purchases.',
-            });
-            this.purchaseResolver = null;
-          }
-        }
+      if (this.purchaseResolver) {
+        if (activated) this.purchaseResolver({ status: 'success' });
+        else this.purchaseResolver({ status: 'error', message: 'Could not activate subscription.' });
+        this.purchaseResolver = null;
       }
-    );
+      this.notifyStatusChange();
+    });
 
-    this.purchaseErrorSub = purchaseErrorListener(
-      (error: PurchaseError) => {
-        if (error.code === ErrorCode.UserCancelled) {
-          logger.log('IAP: purchase cancelled by user');
-          if (this.purchaseResolver) {
-            this.purchaseResolver({ status: 'cancelled' });
-            this.purchaseResolver = null;
-          }
-          return;
-        }
-
-        if (error.code === ErrorCode.DeferredPayment || error.code === ErrorCode.Pending) {
-          logger.log('IAP: purchase deferred/pending');
-          if (this.purchaseResolver) {
-            this.purchaseResolver({ status: 'pending' });
-            this.purchaseResolver = null;
-          }
-          return;
-        }
-
-        logger.error('IAP: purchase error', error.code, error.message);
-        if (this.purchaseResolver) {
-          this.purchaseResolver({
-            status: 'error',
-            message: error.message || 'Purchase failed. Please try again.',
-          });
-          this.purchaseResolver = null;
-        }
+    this.purchaseErrorSub = purchaseErrorListener((error: PurchaseError) => {
+      if (error.code === ErrorCode.UserCancelled) {
+        if (this.purchaseResolver) this.purchaseResolver({ status: 'cancelled' });
+      } else if (error.code === ErrorCode.DeferredPayment || error.code === ErrorCode.Pending) {
+        if (this.purchaseResolver) this.purchaseResolver({ status: 'pending' });
+      } else {
+        if (this.purchaseResolver) this.purchaseResolver({ status: 'error', message: error.message });
       }
-    );
+      this.purchaseResolver = null;
+    });
 
-    logger.log('IAP: transaction listeners started');
+    this.observerActive = true;
   }
 
-  // ─── Server-Side Activation ─────────────────────────────────
-
-  /**
-   * Send the StoreKit 2 verified purchase to the server for activation.
-   * The apple-verify-receipt Edge Function writes to the subscriptions table
-   * using service_role, ensuring the client never writes directly.
-   */
   private async activateSubscription(purchase: Purchase): Promise<boolean> {
     const transactionId = purchase.transactionId;
-    if (!transactionId) {
-      logger.error('IAP: no transactionId on purchase');
-      return false;
-    }
+    if (!transactionId) return false;
 
     try {
-      const expirationDate = (purchase as any).expirationDateIOS
-        ? new Date(Number((purchase as any).expirationDateIOS)).toISOString()
-        : null;
-
-      const { data, error } = await supabase.functions.invoke('apple-verify-receipt', {
+      const expirationDate = (purchase as any).expirationDateIOS ? new Date(Number((purchase as any).expirationDateIOS)).toISOString() : null;
+      const { error } = await supabase.functions.invoke('apple-verify-receipt', {
         body: {
-          productId: purchase.productId,
-          transactionId,
-          originalTransactionId:
-            (purchase as any).originalTransactionIdentifierIOS || transactionId,
-          expiresDate: expirationDate,
-          environment: (purchase as any).environmentIOS || null,
+          productId: purchase.productId, transactionId,
+          originalTransactionId: (purchase as any).originalTransactionIdentifierIOS || transactionId,
+          expiresDate: expirationDate, environment: (purchase as any).environmentIOS || null,
           autoRenewStatus: (purchase as any).autoRenewingIOS ?? true,
         },
       });
-
-      if (error) {
-        logger.error('IAP: server activation failed', error);
-        return false;
-      }
-
-      logger.log('IAP: subscription activated via server');
-      return true;
-    } catch (error) {
-      logger.error('IAP: activation error', error);
-      return false;
-    }
+      return !error;
+    } catch { return false; }
   }
 
-  // ─── Products ────────────────────────────────────────────────
-
   async getSubscriptionProduct(): Promise<IAPProduct | null> {
-    if (!this.initialized) {
-      const connected = await this.initialize();
-      if (!connected) return null;
-    }
-
+    if (!(await this.safeInitialize(2))) return null;
     try {
       let products;
       try {
         products = await fetchProducts({ skus: SUBSCRIPTION_SKUS, type: 'subs' });
-      } catch (initError: any) {
-        // Retry once with a fresh connection if native state is stale
-        if (initError?.code === 'init-connection' || initError?.message?.includes('not initialized')) {
-          logger.log('IAP: retrying with fresh connection');
-          this.initialized = false;
-          const reconnected = await this.initialize();
-          if (!reconnected) return null;
-          products = await fetchProducts({ skus: SUBSCRIPTION_SKUS, type: 'subs' });
-        } else {
-          throw initError;
-        }
+      } catch (e: any) {
+        this.initialized = false;
+        if (!(await this.safeInitialize(1))) return null;
+        products = await fetchProducts({ skus: SUBSCRIPTION_SKUS, type: 'subs' });
       }
-
-      if (!products || products.length === 0) {
-        logger.warn('IAP: no products returned from App Store');
-        return null;
-      }
-
-      const product = products[0];
-      return {
-        productId: product.id,
-        title: product.title,
-        description: product.description,
-        localizedPrice: product.displayPrice,
-        price: String(product.price ?? ''),
-        currency: product.currency,
-      };
-    } catch (error) {
-      logger.error('IAP: failed to fetch products', error);
-      return null;
-    }
+      if (!products || products.length === 0) return null;
+      const p = products[0];
+      return { productId: p.id, title: p.title, description: p.description, localizedPrice: p.displayPrice, price: String(p.price ?? ''), currency: p.currency };
+    } catch { return null; }
   }
 
-  // ─── Purchase ────────────────────────────────────────────────
-
   async purchaseSubscription(): Promise<PurchaseResult> {
-    if (!this.initialized) {
-      const connected = await this.initialize();
-      if (!connected) {
-        return { status: 'error', message: 'Could not connect to the App Store. Please try again.' };
-      }
+    if (!this.initialized && !(await this.safeInitialize(2))) {
+      return { status: 'error', message: 'Could not connect to the App Store.' };
     }
+    if (!this.observerActive) this.setupGlobalTransactionObserver();
 
     try {
       const resultPromise = new Promise<PurchaseResult>((resolve) => {
         this.purchaseResolver = resolve;
-
-        // Safety timeout — if nothing happens in 2 minutes, clean up
         setTimeout(() => {
           if (this.purchaseResolver === resolve) {
             this.purchaseResolver = null;
-            resolve({
-              status: 'error',
-              message: 'Purchase timed out. If you were charged, use Restore Purchases.',
-            });
+            resolve({ status: 'error', message: 'Purchase timed out. Use Restore Purchases.' });
           }
         }, 120_000);
       });
 
-      await requestPurchase({
-        request: { apple: { sku: IAP_PRODUCTS.PREMIUM_YEARLY } },
-        type: 'subs',
-      });
-
+      await requestSubscription({ sku: IAP_PRODUCTS.PREMIUM_YEARLY });
       return resultPromise;
     } catch (error: any) {
-      if (error?.code === ErrorCode.UserCancelled) {
-        return { status: 'cancelled' };
-      }
-      logger.error('IAP: purchase request failed', error);
-      return { status: 'error', message: 'Could not start purchase. Please try again.' };
+      this.purchaseResolver = null;
+      if (error?.code === ErrorCode.UserCancelled) return { status: 'cancelled' };
+      return { status: 'error', message: 'Could not start purchase.' };
     }
   }
-
-  // ─── Restore ─────────────────────────────────────────────────
 
   async restorePurchases(): Promise<boolean> {
-    if (!this.initialized) {
-      const connected = await this.initialize();
-      if (!connected) return false;
-    }
-
+    if (!this.initialized && !(await this.safeInitialize(2))) return false;
     try {
       const purchases = await getAvailablePurchases();
+      const subPurchase = purchases?.find((p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
+      if (!subPurchase) return false;
 
-      if (!purchases || purchases.length === 0) {
-        logger.log('IAP: no purchases to restore');
-        return false;
+      const activated = await this.activateSubscription(subPurchase);
+      for (const p of purchases) {
+        try { await finishTransaction({ purchase: p, isConsumable: false }); } catch {}
       }
-
-      // Find our subscription
-      const subscriptionPurchase = purchases.find(
-        (p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY
-      );
-
-      if (!subscriptionPurchase) {
-        logger.log('IAP: no matching subscription found');
-        return false;
-      }
-
-      // Write the subscription status directly to DB
-      const activated = await this.activateSubscription(subscriptionPurchase);
-
-      // Finish all transactions
-      for (const purchase of purchases) {
-        try { await finishTransaction({ purchase, isConsumable: false }); } catch {}
-      }
-
-      logger.log(`IAP: restore ${activated ? 'succeeded' : 'failed'}`);
+      if (activated) this.notifyStatusChange();
       return activated;
-    } catch (error) {
-      logger.error('IAP: failed to restore purchases', error);
-      return false;
-    }
+    } catch { return false; }
   }
 
-  // ─── Sync on Launch ──────────────────────────────────────────
-
-  /**
-   * Check active entitlements via StoreKit 2 and sync to DB.
-   * Called on app launch to keep DB in sync with on-device state.
-   */
-  async syncSubscriptionOnLaunch(): Promise<void> {
+  private async syncSubscriptionOnLaunch(): Promise<void> {
     if (!this.initialized) return;
-
     try {
       const purchases = await getAvailablePurchases();
-      const activeSub = purchases?.find(
-        (p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY
-      );
-
+      const activeSub = purchases?.find((p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
       if (activeSub) {
-        await this.activateSubscription(activeSub);
+        const activated = await this.activateSubscription(activeSub);
+        if (activated) this.notifyStatusChange();
       }
-    } catch (error) {
-      // Non-critical — Apple Server Notifications are the source of truth
-      logger.error('IAP: launch sync failed', error);
-    }
+    } catch {}
   }
 
-  // ─── Subscription Status (read-only from DB) ────────────────
+  async setup(): Promise<void> {
+    try {
+      if (!(await this.safeInitialize(2))) return;
+      this.setupGlobalTransactionObserver();
+      await this.syncSubscriptionOnLaunch();
+    } catch {}
+  }
 
   async getSubscription(userId: string): Promise<SubscriptionInfo> {
     try {
-      const { data, error } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (error || !data) {
-        return { tier: 'free', status: 'none' };
+      const { data, error } = await supabase.from('subscriptions').select('*').eq('user_id', userId).single();
+      if (error || !data) return { tier: 'free', status: 'none' };
+      if (data.tier === 'premium' && data.status === 'active' && data.current_period_end) {
+        if (new Date(data.current_period_end) < new Date()) return { tier: 'free', status: 'none' };
       }
-
-      // Check expiration client-side as a fast guard
-      // (server is the source of truth via Apple notifications)
-      if (
-        data.tier === 'premium' &&
-        data.status === 'active' &&
-        data.current_period_end
-      ) {
-        const periodEnd = new Date(data.current_period_end);
-        if (periodEnd < new Date()) {
-          return { tier: 'free', status: 'none' };
-        }
-      }
-
-      return {
-        tier: (data.tier || 'free') as SubscriptionTier,
-        status: data.status || 'none',
-        billingInterval: data.billing_interval as BillingInterval | undefined,
-        currentPeriodEnd: data.current_period_end,
-        cancelAtPeriodEnd: data.cancel_at_period_end,
-        productId: data.apple_product_id,
-        transactionId: data.apple_transaction_id,
-      };
-    } catch (error) {
-      logger.error('IAP: error reading subscription', error);
-      return { tier: 'free', status: 'none' };
-    }
+      return { tier: (data.tier || 'free') as SubscriptionTier, status: data.status || 'none', billingInterval: data.billing_interval, currentPeriodEnd: data.current_period_end, cancelAtPeriodEnd: data.cancel_at_period_end, productId: data.apple_product_id, transactionId: data.apple_transaction_id };
+    } catch { return { tier: 'free', status: 'none' }; }
   }
-
-  // ─── Feature Gating ──────────────────────────────────────────
 
   canAccessFeature(subscription: SubscriptionInfo, feature: FeatureKey): boolean {
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
     const tier = isActive ? subscription.tier : 'free';
-    const value = SUBSCRIPTION_TIERS[tier].features[feature];
-
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value === -1 || value > 0;
+    const val = SUBSCRIPTION_TIERS[tier].features[feature];
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return val === -1 || val > 0;
     return false;
   }
 
   getFeatureLimit(subscription: SubscriptionInfo, feature: FeatureKey): number {
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
     const tier = isActive ? subscription.tier : 'free';
-    const value = SUBSCRIPTION_TIERS[tier].features[feature];
-    return typeof value === 'number' ? value : value ? -1 : 0;
+    const val = SUBSCRIPTION_TIERS[tier].features[feature];
+    return typeof val === 'number' ? val : val ? -1 : 0;
   }
 
   isPremium(subscription: SubscriptionInfo): boolean {
-    return (
-      subscription.tier === 'premium' &&
-      (subscription.status === 'active' || subscription.status === 'trialing')
-    );
+    return subscription.tier === 'premium' && (subscription.status === 'active' || subscription.status === 'trialing');
   }
 
-  // ─── Usage Tracking ──────────────────────────────────────────
-
-  async getRemainingQuota(
-    userId: string,
-    subscription: SubscriptionInfo,
-    feature: 'miraQueriesPerDay' | 'recipesPerDay'
-  ): Promise<{ used: number; limit: number; remaining: number; unlimited: boolean }> {
+  async getRemainingQuota(userId: string, subscription: SubscriptionInfo, feature: 'miraQueriesPerDay' | 'recipesPerDay') {
     const limit = this.getFeatureLimit(subscription, feature);
-
-    if (limit === -1) {
-      return { used: 0, limit: -1, remaining: -1, unlimited: true };
-    }
-
+    if (limit === -1) return { used: 0, limit: -1, remaining: -1, unlimited: true };
     try {
-      const featureKey = feature === 'miraQueriesPerDay' ? 'mira_queries' : 'recipes';
+      const fKey = feature === 'miraQueriesPerDay' ? 'mira_queries' : 'recipes';
       const today = new Date().toISOString().split('T')[0];
-
-      const { data } = await supabase
-        .from('usage_tracking')
-        .select('count')
-        .eq('user_id', userId)
-        .eq('feature', featureKey)
-        .eq('date', today)
-        .single();
-
+      const { data } = await supabase.from('usage_tracking').select('count').eq('user_id', userId).eq('feature', fKey).eq('date', today).single();
       const used = data?.count || 0;
-      return {
-        used,
-        limit,
-        remaining: Math.max(0, limit - used),
-        unlimited: false,
-      };
-    } catch {
-      return { used: 0, limit, remaining: limit, unlimited: false };
-    }
+      return { used, limit, remaining: Math.max(0, limit - used), unlimited: false };
+    } catch { return { used: 0, limit, remaining: limit, unlimited: false }; }
   }
 
-  async incrementUsage(
-    userId: string,
-    feature: 'miraQueriesPerDay' | 'recipesPerDay'
-  ): Promise<number> {
+  async incrementUsage(userId: string, feature: 'miraQueriesPerDay' | 'recipesPerDay'): Promise<number> {
     try {
-      const featureKey = feature === 'miraQueriesPerDay' ? 'mira_queries' : 'recipes';
+      const fKey = feature === 'miraQueriesPerDay' ? 'mira_queries' : 'recipes';
       const today = new Date().toISOString().split('T')[0];
-
-      const { data, error } = await supabase.rpc('increment_daily_usage', {
-        p_user_id: userId,
-        p_feature: featureKey,
-        p_date: today,
-      });
-
+      const { data, error } = await supabase.rpc('increment_daily_usage', { p_user_id: userId, p_feature: fKey, p_date: today });
       if (error) throw error;
       return data || 1;
-    } catch (error) {
-      logger.error('IAP: error incrementing usage', error);
-      return 0;
-    }
+    } catch { return 0; }
   }
 
-  // ─── Cleanup ─────────────────────────────────────────────────
-
-  removeTransactionListeners(): void {
+  private removeTransactionListeners(): void {
     this.purchaseUpdateSub?.remove();
     this.purchaseErrorSub?.remove();
     this.purchaseUpdateSub = null;
     this.purchaseErrorSub = null;
+    this.observerActive = false;
   }
 
   async disconnect(): Promise<void> {
     this.removeTransactionListeners();
+    this.statusChangeListeners.clear();
     if (this.initialized) {
       try { await endConnection(); } catch {}
       this.initialized = false;
@@ -563,6 +335,3 @@ class IAPService {
 }
 
 export const iapService = new IAPService();
-
-export const FREE_TIER = SUBSCRIPTION_TIERS.free;
-export const PREMIUM_TIER = SUBSCRIPTION_TIERS.premium;
