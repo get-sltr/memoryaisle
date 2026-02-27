@@ -44,7 +44,8 @@ export default function UpgradePage() {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeStore();
   const router = useRouter();
-  const { isPremium, purchaseYearly, restorePurchases, product } = useSubscription();
+  // Ensure we extract refresh so we can sync the UI instantly
+  const { isPremium, purchaseYearly, restorePurchases, product, refresh } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -58,6 +59,7 @@ export default function UpgradePage() {
 
       switch (result.status) {
         case 'success':
+          await refresh(); // <-- Instantly sync local state
           Alert.alert(
             'Welcome to Premium!',
             'Your subscription is now active. Enjoy unlimited access to all features!',
@@ -89,6 +91,7 @@ export default function UpgradePage() {
     try {
       const success = await restorePurchases();
       if (success) {
+        await refresh(); // <-- Instantly sync local state
         Alert.alert('Restored!', 'Your subscription has been restored.');
       } else {
         Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
@@ -108,7 +111,11 @@ export default function UpgradePage() {
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Pressable 
+            onPress={() => router.back()} 
+            style={styles.backButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Text style={styles.backText}>←</Text>
           </Pressable>
           <Text style={styles.headerTitle}>Premium</Text>
@@ -143,7 +150,11 @@ export default function UpgradePage() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Pressable 
+          onPress={() => router.back()} 
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Text style={styles.backText}>←</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Upgrade to Premium</Text>
@@ -407,7 +418,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.inkFaded,
+    color: COLORS.text.tertiary, // <-- Fixed crash hazard
     marginTop: SPACING.sm,
   },
 

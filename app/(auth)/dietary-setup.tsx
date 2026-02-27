@@ -10,6 +10,7 @@ import {
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/stores/authStore';
 import { saveDietaryPreferences } from '../../src/services/auth';
 import {
@@ -22,44 +23,51 @@ import {
 import type { DietaryPreference, AllergenType, CulturalPreference } from '../../src/types';
 
 const DIETARY_OPTIONS: { id: DietaryPreference; label: string; icon: string }[] = [
-  { id: 'halal', label: 'Halal', icon: '\u262A\uFE0F' },
-  { id: 'kosher', label: 'Kosher', icon: '\u2721\uFE0F' },
-  { id: 'vegetarian', label: 'Vegetarian', icon: '\uD83E\uDD66' },
-  { id: 'vegan', label: 'Vegan', icon: '\uD83C\uDF3F' },
-  { id: 'keto', label: 'Keto', icon: '\uD83E\uDD51' },
-  { id: 'gluten-free', label: 'Gluten-Free', icon: '\uD83C\uDF3E' },
-  { id: 'dairy-free', label: 'Dairy-Free', icon: '\uD83E\uDD5B' },
-  { id: 'nut-free', label: 'Nut-Free', icon: '\uD83E\uDD5C' },
+  { id: 'halal', label: 'Halal', icon: '☪️' },
+  { id: 'kosher', label: 'Kosher', icon: '✡️' },
+  { id: 'vegetarian', label: 'Vegetarian', icon: '🥦' },
+  { id: 'vegan', label: 'Vegan', icon: '🌿' },
+  { id: 'keto', label: 'Keto', icon: '🥑' },
+  { id: 'gluten-free', label: 'Gluten-Free', icon: '🌾' },
+  { id: 'dairy-free', label: 'Dairy-Free', icon: '🥛' },
+  { id: 'nut-free', label: 'Nut-Free', icon: '🥜' },
 ];
 
 const ALLERGEN_OPTIONS: { id: AllergenType; label: string; icon: string }[] = [
-  { id: 'dairy', label: 'Dairy', icon: '\uD83E\uDDC0' },
-  { id: 'eggs', label: 'Eggs', icon: '\uD83E\uDD5A' },
-  { id: 'tree_nuts', label: 'Tree Nuts', icon: '\uD83C\uDF30' },
-  { id: 'peanuts', label: 'Peanuts', icon: '\uD83E\uDD5C' },
-  { id: 'shellfish', label: 'Shellfish', icon: '\uD83E\uDD90' },
-  { id: 'fish', label: 'Fish', icon: '\uD83D\uDC1F' },
-  { id: 'wheat', label: 'Wheat/Gluten', icon: '\uD83C\uDF3E' },
-  { id: 'soy', label: 'Soy', icon: '\uD83C\uDF31' },
-  { id: 'sesame', label: 'Sesame', icon: '\uD83C\uDF6A' },
+  { id: 'dairy', label: 'Dairy', icon: '🧀' },
+  { id: 'eggs', label: 'Eggs', icon: '🥚' },
+  { id: 'tree_nuts', label: 'Tree Nuts', icon: '🌰' },
+  { id: 'peanuts', label: 'Peanuts', icon: '🥜' },
+  { id: 'shellfish', label: 'Shellfish', icon: '🦐' },
+  { id: 'fish', label: 'Fish', icon: '🐟' },
+  { id: 'wheat', label: 'Wheat/Gluten', icon: '🌾' },
+  { id: 'soy', label: 'Soy', icon: '🌱' },
+  { id: 'sesame', label: 'Sesame', icon: '🍪' },
 ];
 
 const CULTURAL_OPTIONS: { id: CulturalPreference; label: string; icon: string }[] = [
-  { id: 'secular', label: 'Secular/US Holidays', icon: '\uD83C\uDDFA\uD83C\uDDF8' },
-  { id: 'christian', label: 'Christian', icon: '\u271D\uFE0F' },
-  { id: 'jewish', label: 'Jewish', icon: '\u2721\uFE0F' },
-  { id: 'muslim', label: 'Muslim', icon: '\u262A\uFE0F' },
-  { id: 'hindu', label: 'Hindu', icon: '\uD83D\uDD49\uFE0F' },
-  { id: 'buddhist', label: 'Buddhist', icon: '\u2638\uFE0F' },
-  { id: 'chinese', label: 'Chinese', icon: '\uD83E\uDDE7' },
+  { id: 'secular', label: 'Secular/US Holidays', icon: '🇺🇸' },
+  { id: 'christian', label: 'Christian', icon: '✝️' },
+  { id: 'jewish', label: 'Jewish', icon: '✡️' },
+  { id: 'muslim', label: 'Muslim', icon: '☪️' },
+  { id: 'hindu', label: 'Hindu', icon: '🕉️' },
+  { id: 'buddhist', label: 'Buddhist', icon: '☸️' },
+  { id: 'chinese', label: 'Chinese', icon: '🏮' },
 ];
 
 export default function DietarySetup() {
+  const insets = useSafeAreaInsets();
   const { household, setHousehold } = useAuthStore();
 
-  const [selectedDietary, setSelectedDietary] = useState<DietaryPreference[]>([]);
-  const [selectedAllergens, setSelectedAllergens] = useState<AllergenType[]>([]);
-  const [selectedCultural, setSelectedCultural] = useState<CulturalPreference[]>([]);
+  const [selectedDietary, setSelectedDietary] = useState<DietaryPreference[]>(
+    household?.dietary_preferences || []
+  );
+  const [selectedAllergens, setSelectedAllergens] = useState<AllergenType[]>(
+    household?.familyProfile?.allergies || []
+  );
+  const [selectedCultural, setSelectedCultural] = useState<CulturalPreference[]>(
+    household?.cultural_preferences || []
+  );
   const [loading, setLoading] = useState(false);
 
   const toggleDietary = (id: DietaryPreference) => {
@@ -92,7 +100,8 @@ export default function DietarySetup() {
     const updatedProfile = {
       ...existingProfile,
       dietarySetupCompleted: true,
-      culturalPreferences: selectedCultural.length > 0 ? selectedCultural : existingProfile.culturalPreferences,
+      culturalPreferences: selectedCultural,
+      allergies: selectedAllergens, // Fix 1: Ensure allergens are saved to profile
     };
 
     const { success, error } = await saveDietaryPreferences(
@@ -109,7 +118,7 @@ export default function DietarySetup() {
       return;
     }
 
-    // Update local store
+    // Update local store with ALL collected data
     setHousehold({
       ...household,
       dietary_preferences: selectedDietary,
@@ -126,17 +135,18 @@ export default function DietarySetup() {
       return;
     }
 
-    // Mark setup as done so we don't show again
+    // Mark setup as done, but preserve existing allergens
     const existingProfile = household.familyProfile || {};
     const updatedProfile = {
       ...existingProfile,
       dietarySetupCompleted: true,
     };
 
+    // Fix 2: Prevent wiping out existing DB arrays if the user skips
     const { success } = await saveDietaryPreferences(
       household.id,
-      [],
-      [],
+      household.dietary_preferences || [],
+      household.cultural_preferences || [],
       updatedProfile,
     );
 
@@ -166,7 +176,10 @@ export default function DietarySetup() {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent, 
+          { paddingTop: Math.max(insets.top + SPACING.xl, 80) } // Fix 3: Dynamic Top Padding
+        ]}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -333,7 +346,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: 80,
     paddingBottom: SPACING.xxl,
   },
   header: {

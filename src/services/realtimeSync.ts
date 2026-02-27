@@ -16,6 +16,8 @@ export interface SyncEvent<T = any> {
 }
 
 export type SyncCallback<T = any> = (event: SyncEvent<T>) => void;
+export type BroadcastCallback = (payload: any) => void;
+export type PresenceCallback = (users: any[]) => void;
 
 interface ChannelSubscription {
   channel: RealtimeChannel;
@@ -25,6 +27,11 @@ interface ChannelSubscription {
 
 class RealtimeSyncService {
   private subscriptions: Map<string, ChannelSubscription> = new Map();
+  private familyChannel: RealtimeChannel | null = null;
+  
+  private broadcastCallbacks: Map<string, Set<BroadcastCallback>> = new Map();
+  private presenceCallbacks: Set<PresenceCallback> = new Set();
+  
   private userId: string | null = null;
   private familyId: string | null = null;
   private isConnected = false;
@@ -34,27 +41,64 @@ class RealtimeSyncService {
     this.userId = userId;
     this.familyId = familyId || null;
 
-    // Subscribe to core tables
-    await this.subscribeToTable('lists');
-    await this.subscribeToTable('list_items');
-    await this.subscribeToTable('family_members');
-    await this.subscribeToTable('notifications');
+    // 1. Subscribe to core table changes
+    this.subscribeToTable('lists');
+    this.subscribeToTable('list_items');
+    this.subscribeToTable('family_members');
+    this.subscribeToTable('notifications');
 
-    if (familyId) {
-      await this.subscribeToTable('family_activity');
+    if (this.familyId) {
+      this.subscribeToTable('family_activity');
+      this.setupSharedFamilyChannel();
     }
 
     this.isConnected = true;
-    logger.log('Realtime sync initialized');
+    logger.info('Realtime sync initialized');
   }
 
-  // Subscribe to a specific table
-  private async subscribeToTable(table: string): Promise<void> {
-    if (this.subscriptions.has(table)) {
-      return;
+  // Set up a single multiplexed channel for ALL family broadcasts & presence
+  private setupSharedFamilyChannel() {
+    if (!this.familyId || !this.userId) return;
+
+    // Clean up existing channel if re-initializing
+    if (this.familyChannel) {
+      this.familyChannel.unsubscribe();
     }
 
-    const channelName = `${table}_${this.userId}`;
+    this.familyChannel = supabase.channel(`family_shared_${this.familyId}`);
+
+    // Listen for all broadcasts
+    this.familyChannel.on('broadcast', { event: '*' }, ({ event, payload }) => {
+      if (payload.senderId !== this.userId) {
+        const callbacks = this.broadcastCallbacks.get(event);
+        callbacks?.forEach(cb => cb(payload));
+      }
+    });
+
+    // Listen for presence syncs
+    this.familyChannel.on('presence', { event: 'sync' }, () => {
+      if (!this.familyChannel) return;
+      const state = this.familyChannel.presenceState();
+      const users = Object.values(state).flat();
+      this.presenceCallbacks.forEach(cb => cb(users));
+    });
+
+    this.familyChannel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await this.familyChannel?.track({
+          id: this.userId,
+          online_at: new Date().toISOString(),
+        });
+      }
+    });
+  }
+
+  // Subscribe to a specific Postgres table
+  private subscribeToTable(table: string): void {
+    if (this.subscriptions.has(table)) return;
+
+    const channelName = `table_${table}_${this.userId}`;
+    const callbacks = new Set<SyncCallback>();
 
     const channel = supabase
       .channel(channelName)
@@ -71,183 +115,96 @@ class RealtimeSyncService {
         }
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          logger.log(`Subscribed to ${table} changes`);
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR') {
           logger.error(`Error subscribing to ${table}`);
         }
       });
 
-    this.subscriptions.set(table, {
-      channel,
-      table,
-      callbacks: new Set(),
-    });
+    // Set synchronously to avoid race conditions
+    this.subscriptions.set(table, { channel, table, callbacks });
   }
 
-  // Get filter based on table and user context
   private getFilterForTable(table: string): string | undefined {
     switch (table) {
       case 'lists':
-        return this.familyId
-          ? `family_id=eq.${this.familyId}`
-          : `user_id=eq.${this.userId}`;
-      case 'list_items':
-        // Items are filtered through list relationship
-        return undefined;
       case 'family_members':
-        return this.familyId
-          ? `family_id=eq.${this.familyId}`
-          : undefined;
+      case 'family_activity':
+        return this.familyId ? `family_id=eq.${this.familyId}` : `user_id=eq.${this.userId}`;
       case 'notifications':
         return `user_id=eq.${this.userId}`;
-      case 'family_activity':
-        return this.familyId
-          ? `family_id=eq.${this.familyId}`
-          : undefined;
+      case 'list_items':
+        return undefined; // Items filtered via RLS or parent list
       default:
         return undefined;
     }
   }
 
-  // Handle incoming change
-  private handleChange(
-    table: string,
-    payload: RealtimePostgresChangesPayload<any>
-  ): void {
+  private handleChange(table: string, payload: RealtimePostgresChangesPayload<any>): void {
     const subscription = this.subscriptions.get(table);
     if (!subscription) return;
 
     const event: SyncEvent = {
       type: payload.eventType as ChangeType,
       table,
-      record: payload.new || payload.old,
+      record: payload.eventType === 'DELETE' ? payload.old : payload.new,
       oldRecord: payload.eventType === 'UPDATE' ? payload.old : undefined,
       timestamp: new Date().toISOString(),
     };
 
-    logger.log(`Realtime ${event.type} on ${table}:`, event.record?.id);
-
-    // Notify all callbacks
     subscription.callbacks.forEach((callback) => {
-      try {
-        callback(event);
-      } catch (error) {
-        logger.error('Error in sync callback:', error);
-      }
+      try { callback(event); } catch (error) { logger.error('Sync callback error:', error); }
     });
   }
 
   // Register a callback for table changes
   onTableChange<T = any>(table: string, callback: SyncCallback<T>): () => void {
-    let subscription = this.subscriptions.get(table);
-
-    if (!subscription) {
-      // Auto-subscribe to the table
+    if (!this.subscriptions.has(table)) {
       this.subscribeToTable(table);
-      subscription = this.subscriptions.get(table);
     }
 
-    if (subscription) {
-      subscription.callbacks.add(callback as SyncCallback);
-    }
+    const subscription = this.subscriptions.get(table);
+    subscription?.callbacks.add(callback as SyncCallback);
 
-    // Return unsubscribe function
     return () => {
       subscription?.callbacks.delete(callback as SyncCallback);
     };
   }
 
-  // Subscribe to list changes
-  onListChange(callback: SyncCallback): () => void {
-    return this.onTableChange('lists', callback);
-  }
+  // Convenience Methods
+  onListChange(callback: SyncCallback): () => void { return this.onTableChange('lists', callback); }
+  onItemChange(callback: SyncCallback): () => void { return this.onTableChange('list_items', callback); }
+  onFamilyChange(callback: SyncCallback): () => void { return this.onTableChange('family_members', callback); }
+  onNotification(callback: SyncCallback): () => void { return this.onTableChange('notifications', callback); }
 
-  // Subscribe to list item changes
-  onItemChange(callback: SyncCallback): () => void {
-    return this.onTableChange('list_items', callback);
-  }
+  // --- Broadcast & Presence Methods ---
 
-  // Subscribe to family member changes
-  onFamilyChange(callback: SyncCallback): () => void {
-    return this.onTableChange('family_members', callback);
-  }
-
-  // Subscribe to notifications
-  onNotification(callback: SyncCallback): () => void {
-    return this.onTableChange('notifications', callback);
-  }
-
-  // Broadcast a custom event to family members
   async broadcastToFamily(eventType: string, payload: any): Promise<void> {
-    if (!this.familyId) return;
-
-    const channel = supabase.channel(`family_${this.familyId}`);
-
-    await channel.send({
+    if (!this.familyChannel) return;
+    await this.familyChannel.send({
       type: 'broadcast',
       event: eventType,
-      payload: {
-        ...payload,
-        senderId: this.userId,
-        timestamp: new Date().toISOString(),
-      },
+      payload: { ...payload, senderId: this.userId, timestamp: new Date().toISOString() },
     });
   }
 
-  // Subscribe to family broadcasts
-  onFamilyBroadcast(eventType: string, callback: (payload: any) => void): () => void {
-    if (!this.familyId) return () => {};
+  onFamilyBroadcast(eventType: string, callback: BroadcastCallback): () => void {
+    if (!this.broadcastCallbacks.has(eventType)) {
+      this.broadcastCallbacks.set(eventType, new Set());
+    }
+    const callbacks = this.broadcastCallbacks.get(eventType)!;
+    callbacks.add(callback);
 
-    const channel = supabase
-      .channel(`family_${this.familyId}`)
-      .on('broadcast', { event: eventType }, ({ payload }) => {
-        // Don't process our own broadcasts
-        if (payload.senderId !== this.userId) {
-          callback(payload);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
+    return () => callbacks.delete(callback);
   }
 
-  // Presence tracking for family members
-  async trackPresence(): Promise<RealtimeChannel | null> {
-    if (!this.familyId) return null;
-
-    const channel = supabase.channel(`presence_${this.familyId}`);
-
-    await channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await channel.track({
-          id: this.userId,
-          online_at: new Date().toISOString(),
-        });
-      }
-    });
-
-    return channel;
-  }
-
-  // Get online family members
-  onPresenceChange(callback: (users: any[]) => void): () => void {
-    if (!this.familyId) return () => {};
-
-    const channel = supabase
-      .channel(`presence_${this.familyId}`)
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const users = Object.values(state).flat();
-        callback(users);
-      })
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
+  onPresenceChange(callback: PresenceCallback): () => void {
+    this.presenceCallbacks.add(callback);
+    // Immediately fire with current state if available
+    if (this.familyChannel) {
+      const state = this.familyChannel.presenceState();
+      callback(Object.values(state).flat());
+    }
+    return () => this.presenceCallbacks.delete(callback);
   }
 
   // Update family context
@@ -255,32 +212,30 @@ class RealtimeSyncService {
     const wasFamily = this.familyId;
     this.familyId = familyId;
 
-    // Resubscribe to family-specific channels if changed
-    if (wasFamily !== familyId && this.isConnected) {
-      this.subscriptions.forEach((sub) => {
-        sub.channel.unsubscribe();
-      });
-      this.subscriptions.clear();
-
-      if (this.userId) {
-        this.initialize(this.userId, familyId || undefined);
-      }
+    if (wasFamily !== familyId && this.isConnected && this.userId) {
+      this.disconnect();
+      this.initialize(this.userId, familyId || undefined);
     }
   }
 
   // Disconnect and cleanup
   disconnect(): void {
-    this.subscriptions.forEach((subscription) => {
-      subscription.channel.unsubscribe();
-    });
+    this.subscriptions.forEach((sub) => sub.channel.unsubscribe());
     this.subscriptions.clear();
+    
+    if (this.familyChannel) {
+      this.familyChannel.unsubscribe();
+      this.familyChannel = null;
+    }
+    
+    this.broadcastCallbacks.clear();
+    this.presenceCallbacks.clear();
     this.isConnected = false;
     this.userId = null;
     this.familyId = null;
-    logger.log('Realtime sync disconnected');
+    logger.info('Realtime sync disconnected');
   }
 
-  // Check connection status
   getStatus(): { connected: boolean; subscriptions: string[] } {
     return {
       connected: this.isConnected,
@@ -290,12 +245,3 @@ class RealtimeSyncService {
 }
 
 export const realtimeSync = new RealtimeSyncService();
-
-// React hook for realtime sync
-export function useRealtimeSync<T = any>(
-  table: string,
-  callback: SyncCallback<T>
-): void {
-  // This would be implemented as a proper React hook using useEffect
-  // For now, it's a placeholder that would be properly implemented in a hooks file
-}

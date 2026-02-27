@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
   interpolate,
   FadeIn,
   SlideInRight,
@@ -22,6 +21,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuroraBackground, AuroraCard, AURORA_PALETTES } from '../../src/components/AuroraBackground';
 import { MealPlanCard } from '../../src/components/MealPlanCard';
 import { PaywallPrompt } from '../../src/components/PaywallPrompt';
@@ -29,6 +29,7 @@ import { useFeatureAccess } from '../../src/hooks/useSubscription';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getActiveList, addItem } from '../../src/services/lists';
 import { getCurrentMealPlan, getMealPlans, type MealPlanWithMeals } from '../../src/services/mealPlans';
+import { logger } from '../../src/utils/logger';
 import {
   COLORS,
   FONT_SIZES,
@@ -46,7 +47,12 @@ function dbPlanToMiraPlan(dbPlan: MealPlanWithMeals): MiraMealPlan {
   const meals = dbPlan.planned_meals || [];
   const startDate = new Date(dbPlan.start_date);
   const endDate = new Date(dbPlan.end_date);
-  const duration = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  let duration = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+  // Fallback check to prevent NaN loop failure
+  if (isNaN(duration) || duration < 1) {
+    duration = 1;
+  }
 
   // Group meals by date
   const mealsByDate = new Map<string, typeof meals>();
@@ -107,6 +113,7 @@ function dbPlanToMiraPlan(dbPlan: MealPlanWithMeals): MiraMealPlan {
 }
 
 export default function MealPlansScreen() {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [selectedPlan, setSelectedPlan] = useState<MiraMealPlan | null>(null);
   const [savedPlans, setSavedPlans] = useState<MiraMealPlan[]>([]);
@@ -114,7 +121,7 @@ export default function MealPlansScreen() {
   const [showPaywall, setShowPaywall] = useState(false);
 
   // Check if user has access to meal plans (premium only)
-  const { hasAccess, isLoading: subscriptionLoading, isPremium } = useFeatureAccess('mealPlans');
+  const { hasAccess, isLoading: subscriptionLoading } = useFeatureAccess('mealPlans');
   const { household } = useAuthStore();
 
   // Load meal plans from database
@@ -135,8 +142,8 @@ export default function MealPlansScreen() {
         const today = new Date().toISOString().split('T')[0];
         const pastPlans = allPlans.filter(p => p.end_date < today && p.planned_meals.length > 0);
         setSavedPlans(pastPlans.map(dbPlanToMiraPlan));
-      } catch {
-        // On error, show empty state
+      } catch (error) {
+        logger.error('Failed to load meal plans from Supabase:', error);
       } finally {
         setIsLoading(false);
       }
@@ -155,7 +162,7 @@ export default function MealPlansScreen() {
       tab === 'active' ? 0 : tab === 'saved' ? 1 : 2,
       { damping: 20, stiffness: 200 }
     );
-  }, []);
+  }, [tabIndicator]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: interpolate(tabIndicator.value, [0, 1, 2], [0, (SCREEN_WIDTH - 48) / 3, ((SCREEN_WIDTH - 48) / 3) * 2]) }],
@@ -176,11 +183,15 @@ export default function MealPlansScreen() {
         Alert.alert('Error', 'Could not get shopping list');
         return;
       }
-      let added = 0;
-      for (const item of items) {
-        const result = await addItem(list.id, item, undefined, 1, 'ai_suggested');
-        if (result) added++;
-      }
+      
+      // Fire all network requests simultaneously for maximum speed
+      const promises = items.map(item => 
+        addItem(list.id, item, undefined, 1, 'ai_suggested')
+      );
+      
+      const results = await Promise.allSettled(promises);
+      const added = results.filter(r => r.status === 'fulfilled' && r.value).length;
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Added!', `${added} ingredients added to your shopping list.`);
     } catch {
@@ -191,7 +202,7 @@ export default function MealPlansScreen() {
   return (
     <AuroraBackground palette="northern" intensity="subtle">
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + SPACING.sm, 60) }]}>
         <Pressable style={styles.backButton} onPress={() => router.back()}>
           <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
           <Text style={styles.backButtonText}>{'←'}</Text>
@@ -409,7 +420,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    paddingTop: 60,
     paddingBottom: SPACING.md,
   },
   backButton: {

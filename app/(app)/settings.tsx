@@ -258,6 +258,14 @@ export default function SettingsScreen() {
 
                         if (isOwner) {
                           // User is the owner: Nuke the whole household
+
+                          // 1. Evict all users from this household first to prevent foreign key errors
+                          await supabase
+                            .from('users')
+                            .update({ household_id: null })
+                            .eq('household_id', householdId);
+
+                          // 2. Delete all child data
                           const { data: lists } = await supabase.from('grocery_lists').select('id').eq('household_id', householdId);
                           if (lists && lists.length > 0) {
                             await supabase.from('list_items').delete().in('list_id', lists.map(l => l.id));
@@ -411,6 +419,7 @@ export default function SettingsScreen() {
     try {
       const success = await restorePurchases();
       if (success) {
+        await refresh();
         Alert.alert('Restored!', 'Your subscription has been restored.');
       } else {
         Alert.alert('Not Found', 'No previous purchases were found to restore.');

@@ -249,9 +249,15 @@ export default function MealPlanScreen() {
     const dayOfWeek = today.getDay();
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - dayOfWeek + (weekOffset * 7));
+
     const targetDate = new Date(startOfWeek);
     targetDate.setDate(startOfWeek.getDate() + dayIndex);
-    return targetDate.toISOString().split('T')[0];
+
+    // Format to YYYY-MM-DD using local time to avoid UTC shifts
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }, [weekOffset]);
 
   const saveMeal = useCallback(async () => {

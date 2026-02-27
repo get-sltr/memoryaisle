@@ -119,7 +119,7 @@ export default function TripsScreen() {
         }),
       };
     });
-  }, []);
+  }, [currentPlan]);
 
   // Memoized recipes - only recalculates when dependencies change
   const recipes = useMemo(() =>
@@ -142,14 +142,16 @@ export default function TripsScreen() {
       return;
     }
 
-    let addedCount = 0;
-    for (const ingredient of selectedRecipe.ingredients) {
+    // Fire all network requests simultaneously
+    const promises = selectedRecipe.ingredients.map(ingredient => {
       const itemName = ingredient.amount
         ? `${ingredient.amount} ${ingredient.item}`
         : ingredient.item;
-      const added = await addItem(list.id, itemName);
-      if (added) addedCount++;
-    }
+      return addItem(list.id, itemName);
+    });
+
+    const results = await Promise.allSettled(promises);
+    const addedCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
 
     Alert.alert(
       'Added to List!',
@@ -171,28 +173,29 @@ export default function TripsScreen() {
       return;
     }
 
-    // Add ALL unchecked items from every category
-    let addedCount = 0;
-    for (const category of currentPlan.checklists) {
-      for (const item of category.items) {
-        if (!item.isPacked) {
-          const added = await addItem(list.id, item.name);
-          if (added) addedCount++;
-        }
-      }
-    }
+    // Flatten all unchecked items from all categories into a single array
+    const uncheckedItems = currentPlan.checklists.flatMap(category => 
+      category.items.filter(item => !item.isPacked)
+    );
 
-    if (addedCount > 0) {
-      Alert.alert(
-        'Added to Shopping List!',
-        `${addedCount} trip items added to your shopping list.`
-      );
-    } else {
+    if (uncheckedItems.length === 0) {
       Alert.alert(
         'Nothing to Add',
         'All items are already checked off.'
       );
+      return;
     }
+
+    // Fire all network requests simultaneously
+    const promises = uncheckedItems.map(item => addItem(list.id, item.name));
+    
+    const results = await Promise.allSettled(promises);
+    const addedCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
+
+    Alert.alert(
+      'Added to Shopping List!',
+      `${addedCount} trip items added to your shopping list.`
+    );
   }, [currentPlan, household?.id]);
 
   return (

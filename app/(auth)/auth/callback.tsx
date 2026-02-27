@@ -15,6 +15,7 @@ import * as Linking from 'expo-linking';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../../src/services/supabase';
+import { logger } from '../../../src/utils/logger';
 import {
   COLORS,
   FONT_SIZES,
@@ -23,12 +24,6 @@ import {
   SHADOWS,
 } from '../../../src/constants/theme';
 
-/**
- * Auth Callback Handler
- * Handles two flows:
- * 1. OAuth redirect (Google, Facebook, Apple web) — sets session from tokens
- * 2. Password recovery — detects type=recovery, shows new password form
- */
 export default function AuthCallbackScreen() {
   const params = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
@@ -40,63 +35,55 @@ export default function AuthCallbackScreen() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const handleCallback = async () => {
+    let isMounted = true;
+
+    const handleUrl = async (url: string | null) => {
+      if (!isMounted) return;
+
       try {
-        const url = await Linking.getInitialURL();
+        // 1. Default to Router params if Expo caught the link first
+        let accessToken = params.access_token || globalParams.access_token;
+        let refreshToken = params.refresh_token || globalParams.refresh_token;
+        let type = params.type || globalParams.type;
 
-        if (url) {
-          const urlObj = new URL(url);
-          const hashParams = new URLSearchParams(urlObj.hash.substring(1));
-          const queryParams = new URLSearchParams(urlObj.search);
+        // 2. If no Router params, safely parse the raw URL
+        if (url && (!accessToken || !refreshToken)) {
+          try {
+            const urlObj = new URL(url);
+            const hashParams = new URLSearchParams(urlObj.hash.substring(1));
+            const queryParams = new URLSearchParams(urlObj.search);
 
-          // Check for password recovery flow
-          const type = hashParams.get('type') || queryParams.get('type');
-          const accessToken = hashParams.get('access_token');
-          const refreshToken = hashParams.get('refresh_token');
-
-          if (type === 'recovery' && accessToken && refreshToken) {
-            // Set session from recovery link tokens so updateUser works
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-
-            if (sessionError) {
-              Alert.alert('Link Expired', 'This password reset link has expired. Please request a new one.', [
-                { text: 'OK', onPress: () => router.replace('/(auth)/sign-in') },
-              ]);
-              return;
-            }
-
-            setMode('recovery');
-            return;
-          }
-
-          // OAuth flow — set session from tokens
-          if (accessToken && refreshToken) {
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-
-            if (sessionError) {
-              router.replace('/(auth)/sign-in');
-              return;
-            }
-
-            router.replace('/');
-            return;
+            type = type || hashParams.get('type') || queryParams.get('type');
+            accessToken = accessToken || hashParams.get('access_token');
+            refreshToken = refreshToken || hashParams.get('refresh_token');
+          } catch (parseError) {
+            logger.warn('Failed to parse raw deep link URL', parseError);
           }
         }
 
-        // Check URL params (some providers pass tokens this way)
-        const accessTokenParam = params.access_token || globalParams.access_token;
-        const refreshTokenParam = params.refresh_token || globalParams.refresh_token;
-
-        if (accessTokenParam && refreshTokenParam) {
+        // 3. Password recovery flow
+        if (type === 'recovery' && accessToken && refreshToken) {
           const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessTokenParam as string,
-            refresh_token: refreshTokenParam as string,
+            access_token: accessToken as string,
+            refresh_token: refreshToken as string,
+          });
+
+          if (sessionError) {
+            Alert.alert('Link Expired', 'This password reset link has expired. Please request a new one.', [
+              { text: 'OK', onPress: () => router.replace('/(auth)/sign-in') },
+            ]);
+            return;
+          }
+
+          if (isMounted) setMode('recovery');
+          return;
+        }
+
+        // 4. OAuth login flow
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken as string,
+            refresh_token: refreshToken as string,
           });
 
           if (sessionError) {
@@ -108,15 +95,27 @@ export default function AuthCallbackScreen() {
           return;
         }
 
-        // No valid tokens found
+        // If no valid tokens found, bounce to login
         router.replace('/(auth)/sign-in');
-      } catch {
+      } catch (err) {
+        logger.error('Auth callback error', err);
         router.replace('/(auth)/sign-in');
       }
     };
 
-    handleCallback();
-  }, []);
+    // Check Cold Boot URL
+    Linking.getInitialURL().then(handleUrl);
+
+    // Listen for Warm Boot URLs
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleUrl(url);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.remove();
+    };
+  }, [params, globalParams]); // Re-run if router catches params late
 
   const handleResetPassword = async () => {
     setError('');
@@ -143,18 +142,24 @@ export default function AuthCallbackScreen() {
         return;
       }
 
-      // Sign out so user logs in fresh with new password
-      await supabase.auth.signOut();
-
+      // Show alert first, THEN sign out on confirm to prevent UI unmount crashes
       Alert.alert(
         'Password Updated',
         'Your password has been reset. Please sign in with your new password.',
-        [{ text: 'Sign In', onPress: () => router.replace('/(auth)/sign-in') }],
+        [
+          { 
+            text: 'Sign In', 
+            onPress: async () => {
+              await supabase.auth.signOut();
+              router.replace('/(auth)/sign-in');
+            }
+          }
+        ],
       );
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      if (isSubmitting) setIsSubmitting(false);
     }
   };
 

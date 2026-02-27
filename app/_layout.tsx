@@ -1,7 +1,7 @@
 // app/_layout.tsx
 import { useEffect, useState, useRef } from 'react';
 import { View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../src/services/supabase';
@@ -23,25 +23,26 @@ export default function RootLayout() {
   const { setUser, setHousehold, setLoading } = useAuthStore();
   const router = useRouter();
   
+  // Expo Router hook to check if navigation tree is mounted
+  const rootNavigationState = useRootNavigationState(); 
+  
   const notificationsInitialized = useRef(false);
   const geofenceInitialized = useRef(false);
   const iapInitialized = useRef(false);
+  
+  // 1. Create a queue for cold-boot notifications
+  const pendingNotificationRoute = useRef<string | null>(null);
 
-  // Initialize In-App Purchases (non-blocking, delayed for iPad M3 safety)
   function initIAP(userId: string) {
     if (iapInitialized.current) return;
     iapInitialized.current = true;
 
-    // Fixes Apple Review Guideline 2.1 (M3 iPad Crash)
     setTimeout(() => {
       iapService.setup().catch(() => {});
       useSubscriptionStore.getState().initialize(userId);
     }, 1500);
   }
 
-  // Initialize background geofencing
-  // The background task (GEOFENCE_TASK_NAME) handles all proximity
-  // checks, DB queries, and push notifications automatically.
   async function initGeofencing(householdId: string) {
     if (geofenceInitialized.current) return;
     geofenceInitialized.current = true;
@@ -53,7 +54,6 @@ export default function RootLayout() {
     }
   }
 
-  // Initialize notifications and register push token
   async function initNotifications(userId: string) {
     if (notificationsInitialized.current) return;
     notificationsInitialized.current = true;
@@ -66,12 +66,23 @@ export default function RootLayout() {
         (response) => {
           const data = response.notification.request.content.data;
           if (!data?.type) return;
+          
+          let targetRoute = '';
           switch (data.type) {
-            case 'list_shared': case 'item_added': case 'item_checked': router.push('/(app)'); break;
-            case 'meal_plan_ready': router.push('/(app)/meal-plans'); break;
-            case 'store_nearby': router.push('/(app)'); break;
-            case 'family_joined': router.push('/(app)/family'); break;
-            case 'mira_suggestion': router.push('/(app)'); break;
+            case 'list_shared': case 'item_added': case 'item_checked': targetRoute = '/(app)'; break;
+            case 'meal_plan_ready': targetRoute = '/(app)/meal-plans'; break;
+            case 'store_nearby': targetRoute = '/(app)'; break;
+            case 'family_joined': targetRoute = '/(app)/family'; break;
+            case 'mira_suggestion': targetRoute = '/(app)'; break;
+          }
+
+          if (targetRoute) {
+            // 2. If app isn't ready to route yet, queue it. Otherwise, route immediately.
+            if (!isReady || !rootNavigationState?.key) {
+              pendingNotificationRoute.current = targetRoute;
+            } else {
+              router.push(targetRoute as any);
+            }
           }
         }
       );
@@ -136,6 +147,7 @@ export default function RootLayout() {
         iapInitialized.current = false;
         notificationsInitialized.current = false;
         geofenceInitialized.current = false;
+        pendingNotificationRoute.current = null;
         
         iapService.disconnect();
         notificationService.removeNotificationListeners();
@@ -151,6 +163,14 @@ export default function RootLayout() {
       geofenceService.stopMonitoring();
     };
   }, []);
+
+  // 3. Effect to handle queued routes once navigation mounts
+  useEffect(() => {
+    if (isReady && rootNavigationState?.key && pendingNotificationRoute.current) {
+      router.push(pendingNotificationRoute.current as any);
+      pendingNotificationRoute.current = null;
+    }
+  }, [isReady, rootNavigationState?.key]);
 
   if (!isReady) return null;
 

@@ -140,20 +140,38 @@ class IAPService {
 
     this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
       let activated = false;
-      try { activated = await this.activateSubscription(purchase); } catch (e) {
+      try { 
+        activated = await this.activateSubscription(purchase); 
+      } catch (e) {
         logger.error('IAP: activateSubscription failed after purchase', e);
       }
 
-      try { await finishTransaction({ purchase, isConsumable: false }); } catch (e) {
-        logger.error('IAP: finishTransaction failed', e);
+      // ONLY finish the transaction if we successfully unlocked premium in the database!
+      if (activated) {
+        try { 
+          await finishTransaction({ purchase, isConsumable: false }); 
+        } catch (e) {
+          logger.error('IAP: finishTransaction failed', e);
+        }
+      } else {
+        logger.warn('IAP: Backend verification failed. Transaction left in Apple queue to retry later.');
       }
 
       if (this.purchaseResolver) {
-        if (activated) this.purchaseResolver({ status: 'success' });
-        else this.purchaseResolver({ status: 'error', message: 'Could not activate subscription.' });
+        if (activated) {
+          this.purchaseResolver({ status: 'success' });
+        } else {
+          this.purchaseResolver({ 
+            status: 'error', 
+            message: 'Could not verify purchase with our servers. It will retry automatically, or tap Restore Purchases.' 
+          });
+        }
         this.purchaseResolver = null;
       }
-      this.notifyStatusChange();
+      
+      if (activated) {
+        this.notifyStatusChange();
+      }
     });
 
     this.purchaseErrorSub = purchaseErrorListener((error: PurchaseError) => {
@@ -185,7 +203,10 @@ class IAPService {
         },
       });
       return !error;
-    } catch { return false; }
+    } catch (error) {
+      logger.error('IAP: activateSubscription network error', error);
+      return false;
+    }
   }
 
   async getSubscriptionProduct(): Promise<IAPProduct | null> {
@@ -265,9 +286,16 @@ class IAPService {
     try {
       const purchases = await getAvailablePurchases();
       const activeSub = purchases?.find((p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
+      
       if (activeSub) {
         const activated = await this.activateSubscription(activeSub);
-        if (activated) this.notifyStatusChange();
+        if (activated) {
+          // Now that it succeeded on a background launch, safely finish it!
+          try { 
+            await finishTransaction({ purchase: activeSub, isConsumable: false }); 
+          } catch {}
+          this.notifyStatusChange();
+        }
       }
     } catch {}
   }

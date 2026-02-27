@@ -70,8 +70,9 @@ export default function ReceiptsScreen() {
               text: 'Yes, Check Off',
               onPress: () => {
                 result.purchasedItems.forEach(purchased => {
+                  const purchasedName = purchased.name.trim().toLowerCase();
                   const matchingItem = items.find(
-                    item => item.name.toLowerCase().includes(purchased.name.toLowerCase())
+                    item => item.name.trim().toLowerCase() === purchasedName
                   );
                   if (matchingItem && !matchingItem.is_completed) {
                     completeItem(matchingItem.id);

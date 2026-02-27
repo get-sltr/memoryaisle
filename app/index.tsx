@@ -1,14 +1,22 @@
-import { Redirect } from 'expo-router';
+import { Redirect, useRootNavigationState } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
 import { useAuthStore } from '../src/stores/authStore';
+import { COLORS } from '../src/constants/theme';
 
 export default function Index() {
   const { isAuthenticated, isGuest, user, household, isLoading } = useAuthStore();
+  const rootNavigationState = useRootNavigationState();
 
+  // 1. Wait for Expo Router's navigation tree to mount before trying to redirect
+  if (!rootNavigationState?.key) {
+    return <View style={{ flex: 1, backgroundColor: '#FDF5E6' }} />;
+  }
+
+  // 2. Handle Auth loading state
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF5E6' }}>
-        <ActivityIndicator size="large" color="#8B4513" />
+        <ActivityIndicator size="large" color={COLORS.gold.base} />
       </View>
     );
   }
@@ -30,8 +38,9 @@ export default function Index() {
 
   // Authenticated with household but no dietary setup done -> Dietary setup
   const dietarySetupDone =
-    (household.dietary_preferences && household.dietary_preferences.length > 0) ||
-    household.familyProfile?.dietarySetupCompleted;
+    (household?.dietary_preferences && household.dietary_preferences.length > 0) ||
+    household?.familyProfile?.dietarySetupCompleted === true;
+    
   if (!dietarySetupDone) {
     return <Redirect href="/(auth)/dietary-setup" />;
   }

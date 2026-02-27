@@ -11,6 +11,8 @@ import {
   Modal,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,7 +28,6 @@ import {
 import { getActiveList, addItem } from '../../src/services/lists';
 import {
   COLORS,
-  FONTS,
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
@@ -66,44 +67,63 @@ export default function FavoritesScreen() {
 
   const handleToggleFavorite = useCallback(async (item: FavoriteItem) => {
     if (!household?.id) return;
-    const isNowFavorite = await toggleFavorite(household.id, item.name);
-    setItems(prev =>
-      prev.map(i =>
-        i.id === item.id ? { ...i, isFavorite: isNowFavorite } : i
-      ).sort((a, b) => {
-        if (a.isFavorite && !b.isFavorite) return -1;
-        if (!a.isFavorite && b.isFavorite) return 1;
-        return b.count - a.count;
-      })
-    );
-  }, []);
+    
+    try {
+      const isNowFavorite = await toggleFavorite(household.id, item.name);
+      
+      setItems(prev =>
+        prev.map(i =>
+          i.id === item.id ? { ...i, isFavorite: isNowFavorite } : i
+        ).sort((a, b) => {
+          if (a.isFavorite && !b.isFavorite) return -1;
+          if (!a.isFavorite && b.isFavorite) return 1;
+          return b.count - a.count;
+        })
+      );
+    } catch (error) {
+      logger.error('Error toggling favorite:', error);
+      Alert.alert('Connection Error', 'Failed to update favorite. Please try again.');
+    }
+  }, [household?.id]);
 
   const handleAddToList = useCallback(async (item: FavoriteItem) => {
     if (!household?.id) return;
 
-    const list = await getActiveList(household.id);
-    if (!list) {
-      Alert.alert('Error', 'Could not find your shopping list');
-      return;
-    }
+    try {
+      const list = await getActiveList(household.id);
+      if (!list) {
+        Alert.alert('Error', 'Could not find your active shopping list.');
+        return;
+      }
 
-    const added = await addItem(list.id, item.name);
-    if (added) {
-      Alert.alert('Added!', `${item.name} added to your list`);
+      const added = await addItem(list.id, item.name);
+      if (added) {
+        Alert.alert('Added!', `${item.name} was added to your list.`);
+      }
+    } catch (error) {
+      logger.error('Error adding favorite to list:', error);
+      Alert.alert('Error', 'Failed to add item to your list. Please check your connection.');
     }
   }, [household?.id]);
 
   const handleAddCustomFavorite = useCallback(async () => {
+    if (!household?.id) return; // Safe check instead of non-null assertion
+    
     if (!newItemName.trim()) {
       Alert.alert('Missing Name', 'Please enter an item name');
       return;
     }
 
-    await addCustomFavorite(household!.id, newItemName.trim());
-    setNewItemName('');
-    setModalVisible(false);
-    loadItems();
-  }, [newItemName, loadItems]);
+    try {
+      await addCustomFavorite(household.id, newItemName.trim());
+      setNewItemName('');
+      setModalVisible(false);
+      loadItems();
+    } catch (error) {
+      logger.error('Error adding custom favorite:', error);
+      Alert.alert('Error', 'Failed to save your favorite. Please try again.');
+    }
+  }, [household?.id, newItemName, loadItems]);
 
   // Separate favorites and frequent items
   const favoriteItems = items.filter(i => i.isFavorite);
@@ -226,54 +246,59 @@ export default function FavoritesScreen() {
         transparent={true}
         onRequestClose={() => setModalVisible(false)}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setModalVisible(false)}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
         >
-          <Pressable style={styles.modalContainer} onPress={e => e.stopPropagation()}>
-            <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
-            <LinearGradient
-              colors={['rgba(255, 255, 255, 0.95)', 'rgba(250, 252, 255, 0.9)']}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.modalBorder} />
-
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Add Favorite</Text>
-              <Text style={styles.modalSubtitle}>
-                Add an item you want quick access to
-              </Text>
-
-              <TextInput
-                style={styles.modalInput}
-                placeholder="e.g., Organic Almond Milk"
-                placeholderTextColor={COLORS.text.tertiary}
-                value={newItemName}
-                onChangeText={setNewItemName}
-                autoFocus
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setModalVisible(false)}
+          >
+            <Pressable style={styles.modalContainer} onPress={e => e.stopPropagation()}>
+              <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.95)', 'rgba(250, 252, 255, 0.9)']}
+                style={StyleSheet.absoluteFill}
               />
+              <View style={styles.modalBorder} />
 
-              <View style={styles.modalButtons}>
-                <Pressable
-                  style={styles.modalCancelButton}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.modalSaveButton}
-                  onPress={handleAddCustomFavorite}
-                >
-                  <LinearGradient
-                    colors={[COLORS.gold.light, COLORS.gold.base]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <Text style={styles.modalSaveText}>Add Favorite</Text>
-                </Pressable>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Add Favorite</Text>
+                <Text style={styles.modalSubtitle}>
+                  Add an item you want quick access to
+                </Text>
+
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g., Organic Almond Milk"
+                  placeholderTextColor={COLORS.text.tertiary}
+                  value={newItemName}
+                  onChangeText={setNewItemName}
+                  autoFocus
+                />
+
+                <View style={styles.modalButtons}>
+                  <Pressable
+                    style={styles.modalCancelButton}
+                    onPress={() => setModalVisible(false)}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.modalSaveButton}
+                    onPress={handleAddCustomFavorite}
+                  >
+                    <LinearGradient
+                      colors={[COLORS.gold.light, COLORS.gold.base]}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <Text style={styles.modalSaveText}>Add Favorite</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenWrapper>
   );

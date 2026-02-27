@@ -1183,7 +1183,7 @@ export default function MainList() {
                 <TextInput
                   style={styles.storeInput}
                   placeholder="Store name (e.g., Ralph's)"
-                  placeholderTextColor={COLORS.text.secondary}
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={storeNameInput}
                   onChangeText={setStoreNameInput}
                   autoFocus
@@ -2590,12 +2590,12 @@ const styles = StyleSheet.create({
   storeInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: COLORS.platinum.light,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     fontSize: FONT_SIZES.md,
-    color: COLORS.text.primary,
+    color: '#FFFFFF',
     marginBottom: SPACING.md,
   },
   buttonDisabled: {
