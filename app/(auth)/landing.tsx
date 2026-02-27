@@ -130,17 +130,21 @@ export default function LandingScreen() {
 
   // Redirect if authenticated
   useEffect(() => {
-    if (isAuthenticated && household) {
+    if (isAuthenticated) {
       router.replace('/');
     }
-  }, [isAuthenticated, household]);
+  }, [isAuthenticated]);
 
   // Handle social sign in
   const handleSocialSignIn = async (provider: 'google' | 'apple' | 'facebook') => {
     setIsLoading(provider);
     try {
       const result = await signInWithOAuth(provider);
-      if (!result.success && result.error) {
+      if (result.success) {
+        router.replace('/');
+        return;
+      }
+      if (result.error) {
         Alert.alert('Sign In Failed', result.error);
       }
     } catch (error: any) {
