@@ -199,13 +199,13 @@ export default function SettingsScreen() {
     adminService.isAdmin().then(setIsAdmin);
     checkNotificationStatus();
 
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
+    const appStateSub = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         checkNotificationStatus();
       }
     });
 
-    return () => subscription.remove();
+    return () => appStateSub.remove();
   }, [checkNotificationStatus]);
 
   // Delete account handler

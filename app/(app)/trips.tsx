@@ -77,6 +77,13 @@ export default function TripsScreen() {
   // Memoized trip types - prevents recalculation on every render
   const tripTypes = useMemo(() => Object.values(TRIP_TEMPLATES), []);
 
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (checklistSaveTimer.current) clearTimeout(checklistSaveTimer.current);
+    };
+  }, []);
+
   // Load active trip plan from Supabase on mount
   useEffect(() => {
     setMiraMessage(getMiraTripResponse(''));
@@ -119,7 +126,9 @@ export default function TripsScreen() {
       return;
     }
 
-    const numDays = parseInt(days) || TRIP_TEMPLATES[selectedType].suggestedDuration.min;
+    const rawDays = parseInt(days);
+    const numDays = Math.min(Math.max(rawDays > 0 ? rawDays : TRIP_TEMPLATES[selectedType].suggestedDuration.min, 1), 365);
+    const numTravelers = Math.min(Math.max(parseInt(travelers) || 4, 1), 50);
     const start = startDate;
     const startDateObj = new Date(startDate + 'T12:00:00');
     const endDate = new Date(startDateObj.getTime() + (numDays - 1) * 24 * 60 * 60 * 1000);
@@ -130,24 +139,26 @@ export default function TripsScreen() {
       tripName,
       start,
       end,
-      parseInt(travelers) || 4
+      numTravelers
     );
 
-    // Optimistically set local state immediately
+    // Set local state immediately
     setCurrentPlan(plan);
     setShowPlanModal(false);
     setIsEditing(false);
     setMiraMessage(`🎉 Your ${plan.name} is planned! I've created a checklist with ${plan.checklists.reduce((acc, cat) => acc + cat.items.length, 0)} items and ${plan.meals.length} meal suggestions.`);
 
-    // Persist to Supabase
+    // Persist to Supabase — update local ID from server but don't overwrite full plan
+    // (user may toggle checklists between optimistic set and server response)
     if (household?.id) {
       try {
         if (isEditing && currentPlan?.id) {
           const saved = await updateTripPlan(currentPlan.id, plan);
-          setCurrentPlan(saved);
+          // Only take the server-assigned ID, don't overwrite local state
+          setCurrentPlan(prev => prev ? { ...prev, id: saved.id, updatedAt: saved.updatedAt } : saved);
         } else {
           const saved = await saveTripPlan(household.id, plan, user?.id);
-          setCurrentPlan(saved);
+          setCurrentPlan(prev => prev ? { ...prev, id: saved.id, createdAt: saved.createdAt, updatedAt: saved.updatedAt } : saved);
         }
       } catch {
         // Keep local state so user doesn't lose work
@@ -239,28 +250,32 @@ export default function TripsScreen() {
       return;
     }
 
-    const list = await getActiveList(household.id);
-    if (!list) {
-      Alert.alert('Error', 'Could not find your shopping list');
-      return;
+    try {
+      const list = await getActiveList(household.id);
+      if (!list) {
+        Alert.alert('Error', 'Could not find your shopping list');
+        return;
+      }
+
+      // Fire all network requests simultaneously
+      const promises = selectedRecipe.ingredients.map(ingredient => {
+        const itemName = ingredient.amount
+          ? `${ingredient.amount} ${ingredient.item}`
+          : ingredient.item;
+        return addItem(list.id, itemName);
+      });
+
+      const results = await Promise.allSettled(promises);
+      const addedCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
+
+      Alert.alert(
+        'Added to List!',
+        `${addedCount} ingredients from "${selectedRecipe.name}" added to your shopping list.`
+      );
+      setShowRecipeModal(false);
+    } catch {
+      Alert.alert('Error', 'Could not add ingredients to your list. Please try again.');
     }
-
-    // Fire all network requests simultaneously
-    const promises = selectedRecipe.ingredients.map(ingredient => {
-      const itemName = ingredient.amount
-        ? `${ingredient.amount} ${ingredient.item}`
-        : ingredient.item;
-      return addItem(list.id, itemName);
-    });
-
-    const results = await Promise.allSettled(promises);
-    const addedCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
-
-    Alert.alert(
-      'Added to List!',
-      `${addedCount} ingredients from "${selectedRecipe.name}" added to your shopping list.`
-    );
-    setShowRecipeModal(false);
   }, [selectedRecipe, household?.id]);
 
   // Generate shopping list from trip plan checklist
@@ -270,35 +285,39 @@ export default function TripsScreen() {
       return;
     }
 
-    const list = await getActiveList(household.id);
-    if (!list) {
-      Alert.alert('Error', 'Could not find your shopping list');
-      return;
-    }
+    try {
+      const list = await getActiveList(household.id);
+      if (!list) {
+        Alert.alert('Error', 'Could not find your shopping list');
+        return;
+      }
 
-    // Flatten all unchecked items from all categories into a single array
-    const uncheckedItems = currentPlan.checklists.flatMap(category => 
-      category.items.filter(item => !item.isPacked)
-    );
-
-    if (uncheckedItems.length === 0) {
-      Alert.alert(
-        'Nothing to Add',
-        'All items are already checked off.'
+      // Flatten all unchecked items from all categories into a single array
+      const uncheckedItems = currentPlan.checklists.flatMap(category =>
+        category.items.filter(item => !item.isPacked)
       );
-      return;
+
+      if (uncheckedItems.length === 0) {
+        Alert.alert(
+          'Nothing to Add',
+          'All items are already checked off.'
+        );
+        return;
+      }
+
+      // Fire all network requests simultaneously
+      const promises = uncheckedItems.map(item => addItem(list.id, item.name));
+
+      const results = await Promise.allSettled(promises);
+      const addedCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
+
+      Alert.alert(
+        'Added to Shopping List!',
+        `${addedCount} trip items added to your shopping list.`
+      );
+    } catch {
+      Alert.alert('Error', 'Could not add items to your list. Please try again.');
     }
-
-    // Fire all network requests simultaneously
-    const promises = uncheckedItems.map(item => addItem(list.id, item.name));
-    
-    const results = await Promise.allSettled(promises);
-    const addedCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
-
-    Alert.alert(
-      'Added to Shopping List!',
-      `${addedCount} trip items added to your shopping list.`
-    );
   }, [currentPlan, household?.id]);
 
   return (

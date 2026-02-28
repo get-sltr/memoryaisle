@@ -23,6 +23,7 @@ import {
   getFrequentItems,
   toggleFavorite,
   addCustomFavorite,
+  removeFavorite,
   FavoriteItem,
 } from '../../src/services/favorites';
 import { getActiveList, addItem } from '../../src/services/lists';
@@ -83,6 +84,16 @@ export default function FavoritesScreen() {
     } catch (error) {
       logger.error('Error toggling favorite:', error);
       Alert.alert('Connection Error', 'Failed to update favorite. Please try again.');
+    }
+  }, [household?.id]);
+
+  const handleRemoveFavorite = useCallback(async (item: FavoriteItem) => {
+    if (!household?.id) return;
+    try {
+      await removeFavorite(household.id, item.name);
+      setItems(prev => prev.filter(i => i.id !== item.id));
+    } catch (error) {
+      logger.error('Error removing favorite:', error);
     }
   }, [household?.id]);
 
@@ -190,6 +201,7 @@ export default function FavoritesScreen() {
                   item={item}
                   onToggleFavorite={() => handleToggleFavorite(item)}
                   onAddToList={() => handleAddToList(item)}
+                  onRemove={() => handleRemoveFavorite(item)}
                 />
               ))}
             </View>
@@ -308,9 +320,10 @@ interface FavoriteCardProps {
   item: FavoriteItem;
   onToggleFavorite: () => void;
   onAddToList: () => void;
+  onRemove?: () => void;
 }
 
-function FavoriteCard({ item, onToggleFavorite, onAddToList }: FavoriteCardProps) {
+function FavoriteCard({ item, onToggleFavorite, onAddToList, onRemove }: FavoriteCardProps) {
   return (
     <Pressable
       style={({ pressed }) => [
@@ -335,6 +348,17 @@ function FavoriteCard({ item, onToggleFavorite, onAddToList }: FavoriteCardProps
         style={styles.cardShine}
       />
       <View style={[styles.cardBorder, item.isFavorite && styles.cardBorderFavorite]} />
+
+      {/* Delete button */}
+      {onRemove && (
+        <Pressable
+          style={styles.deleteBadge}
+          onPress={onRemove}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.deleteText}>✕</Text>
+        </Pressable>
+      )}
 
       {/* Star badge - toggles favorite */}
       <Pressable
@@ -490,6 +514,23 @@ const styles = StyleSheet.create({
   },
   cardBorderFavorite: {
     borderColor: 'rgba(212, 175, 55, 0.4)',
+  },
+  deleteBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  deleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.text.secondary,
   },
   starBadge: {
     position: 'absolute',

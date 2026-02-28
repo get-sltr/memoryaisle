@@ -10,11 +10,21 @@ export default function Index() {
   const router = useRouter();
   const hasNavigated = useRef(false);
 
+  // Reset hasNavigated when auth state changes (e.g. sign-out) so navigation can re-fire
+  const prevAuthKey = useRef(`${isAuthenticated}-${isGuest}`);
+  useEffect(() => {
+    const authKey = `${isAuthenticated}-${isGuest}`;
+    if (prevAuthKey.current !== authKey) {
+      prevAuthKey.current = authKey;
+      hasNavigated.current = false;
+    }
+  }, [isAuthenticated, isGuest]);
+
   useEffect(() => {
     // Wait for navigation tree and auth to be ready
     if (!rootNavigationState?.key || isLoading) return;
 
-    // Only navigate once — prevents the household/dietary screen from flashing away
+    // Only navigate once per auth state — prevents the household/dietary screen from flashing away
     if (hasNavigated.current) return;
     hasNavigated.current = true;
 

@@ -150,12 +150,12 @@ export default function DietarySetup() {
       updatedProfile,
     );
 
-    if (success) {
-      setHousehold({
-        ...household,
-        familyProfile: updatedProfile,
-      });
-    }
+    // Always mark setup as done locally and navigate (even if save fails,
+    // we don't want to trap the user on this screen)
+    setHousehold({
+      ...household,
+      familyProfile: updatedProfile,
+    });
 
     router.replace('/(app)');
   };

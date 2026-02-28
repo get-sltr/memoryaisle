@@ -95,6 +95,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     let splashHidden = false;
+    let initAuthComplete = false;
 
     function finishInit() {
       if (splashHidden) return;
@@ -122,6 +123,7 @@ export default function RootLayout() {
           initIAP(user.id);
         }
       } finally {
+        initAuthComplete = true;
         clearTimeout(timeout);
         finishInit();
       }
@@ -131,14 +133,22 @@ export default function RootLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const user = await getCurrentUser();
-        setUser(user);
-        if (user) {
-          const household = await getUserHousehold(user);
-          setHousehold(household);
-          initNotifications(user.id);
-          if (household?.id) initGeofencing(household.id);
-          initIAP(user.id);
+        // Skip if initAuth is still running (it handles the initial session)
+        if (!initAuthComplete) return;
+        // Signal loading so root index waits for full user+household state
+        setLoading(true);
+        try {
+          const user = await getCurrentUser();
+          setUser(user);
+          if (user) {
+            const household = await getUserHousehold(user);
+            setHousehold(household);
+            initNotifications(user.id);
+            if (household?.id) initGeofencing(household.id);
+            initIAP(user.id);
+          }
+        } finally {
+          setLoading(false);
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);

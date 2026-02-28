@@ -222,8 +222,9 @@ class RealtimeSyncService {
     this.familyId = familyId;
 
     if (wasFamily !== familyId && this.isConnected && this.userId) {
+      const currentUserId = this.userId; // Capture before disconnect clears it
       this.disconnect();
-      this.initialize(this.userId, familyId || undefined);
+      this.initialize(currentUserId, familyId || undefined);
     }
   }
 

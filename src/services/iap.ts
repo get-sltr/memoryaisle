@@ -27,7 +27,7 @@ import { supabase } from './supabase';
 const logger = iapLogger;
 
 export const IAP_PRODUCTS = {
-  PREMIUM_YEARLY: 'com.memoryaisle.app.premium.yearly',
+  PREMIUM_YEARLY: 'com.memoryaisle.premium.yearly',
 } as const;
 
 const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_YEARLY];
@@ -304,7 +304,7 @@ class IAPService {
     try {
       const { data, error } = await supabase.from('subscriptions').select('*').eq('user_id', userId).single();
       if (error || !data) return { tier: 'free', status: 'none' };
-      if (data.tier === 'premium' && data.status === 'active' && data.current_period_end) {
+      if (data.tier === 'premium' && (data.status === 'active' || data.status === 'trialing') && data.current_period_end) {
         if (new Date(data.current_period_end) < new Date()) return { tier: 'free', status: 'none' };
       }
       return { 

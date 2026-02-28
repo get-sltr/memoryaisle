@@ -70,23 +70,15 @@ export async function getSpendingByCategory(
 
   const { data, error } = await supabase
     .from('purchase_history')
-    .select('category, price')
+    .select('item_name, category, price')
     .eq('household_id', householdId)
     .gte('purchased_at', start)
     .lt('purchased_at', end);
 
   if (error) throw error;
 
-  // Fetch item names too so we can recategorize client-side
-  const { data: itemData } = await supabase
-    .from('purchase_history')
-    .select('item_name, category, price')
-    .eq('household_id', householdId)
-    .gte('purchased_at', start)
-    .lt('purchased_at', end);
-
   const byCategory: Record<string, number> = {};
-  (itemData || data || []).forEach((row: any) => {
+  (data || []).forEach((row: any) => {
     const cat = row.item_name
       ? recategorize(row.item_name, row.category || 'other')
       : (row.category || 'other');

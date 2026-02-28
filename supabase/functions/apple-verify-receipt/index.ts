@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     }
 
     // Validate product ID matches our known product
-    const VALID_PRODUCT_IDS = ['com.memoryaisle.app.premium.yearly'];
+    const VALID_PRODUCT_IDS = ['com.memoryaisle.premium.yearly'];
     if (!VALID_PRODUCT_IDS.includes(productId)) {
       return new Response(
         JSON.stringify({ error: 'Invalid product ID' }),

@@ -141,7 +141,11 @@ export default function LandingScreen() {
     try {
       const result = await signInWithOAuth(provider);
       if (result.success) {
-        router.replace('/');
+        // Don't navigate here — onAuthStateChange in _layout.tsx will load
+        // full user+household state, then the useEffect below redirects to /
+        // once isAuthenticated becomes true. Keep spinner showing.
+        // Safety timeout: if onAuthStateChange never fires, clear spinner after 10s
+        setTimeout(() => setIsLoading(null), 10000);
         return;
       }
       if (result.error) {
@@ -149,9 +153,9 @@ export default function LandingScreen() {
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Something went wrong');
-    } finally {
-      setIsLoading(null);
     }
+    // Only clear loading on error/cancel, not on success
+    setIsLoading(null);
   };
 
   // Animation values

@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
-import type { TripPlan } from '../types';
+import type { TripPlan, TripMeal, TripChecklistCategory } from '../types';
 
 // Database row type (snake_case, matches Supabase schema)
 export interface TripPlanRow {
@@ -14,10 +14,10 @@ export interface TripPlanRow {
   duration: number;
   travelers: number;
   status: string;
-  meals: any[];
-  checklists: any[];
+  meals: TripMeal[];
+  checklists: TripChecklistCategory[];
   shopping_list: string[];
-  estimated_budget: any | null;
+  estimated_budget: TripPlan['estimatedBudget'] | null;
   mira_note: string | null;
   allergen_notes: string[];
   created_by: string | null;

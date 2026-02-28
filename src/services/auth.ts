@@ -297,7 +297,8 @@ export async function createHousehold(name: string, size?: number): Promise<{ ho
       .select().single();
 
     if (householdError) throw householdError;
-    await supabase.from('users').update({ household_id: household.id }).eq('id', user.id);
+    const { error: linkError } = await supabase.from('users').update({ household_id: household.id }).eq('id', user.id);
+    if (linkError) throw linkError;
     return { household };
   } catch (error: any) {
     return { household: null, error: error.message };
@@ -318,14 +319,15 @@ export async function joinHousehold(inviteCode: string): Promise<{ household: Ho
 
     const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('household_id', household.id);
     if (count !== null && count >= limit) {
-      return { 
-        household: null, 
-        error: isPremium ? 'Household at max capacity (7).' : 'Free accounts limited to 1 member.', 
-        needsPremium: !isPremium 
+      return {
+        household: null,
+        error: isPremium ? 'Household at max capacity (7).' : 'Free accounts limited to 1 member.',
+        needsPremium: !isPremium
       };
     }
 
-    await supabase.from('users').update({ household_id: household.id }).eq('id', user.id);
+    const { error: linkError } = await supabase.from('users').update({ household_id: household.id }).eq('id', user.id);
+    if (linkError) throw linkError;
     return { household };
   } catch (error: any) {
     return { household: null, error: error.message };

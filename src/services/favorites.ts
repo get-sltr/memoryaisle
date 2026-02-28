@@ -52,8 +52,17 @@ export async function getFrequentItems(householdId: string): Promise<FavoriteIte
       }
     }
 
+    // Filter out recipe-style items (e.g., "3 cups of grated carrots", "1/2 lb ground beef")
+    const isRecipeItem = (name: string) => /^\d/.test(name.trim());
+
     // Convert to array and sort
     const items: FavoriteItem[] = Object.entries(itemCounts)
+      .filter(([name, data]) => {
+        // Always keep manual favorites
+        if (favoriteNames.includes(name.toLowerCase())) return true;
+        // For frequent items: require 2+ purchases and skip recipe-style names
+        return data.count >= 2 && !isRecipeItem(name);
+      })
       .map(([name, data]) => ({
         id: name.toLowerCase().replace(/\s+/g, '-'),
         name,
