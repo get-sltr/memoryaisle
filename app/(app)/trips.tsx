@@ -60,6 +60,7 @@ export default function TripsScreen() {
   const [tripName, setTripName] = useState('');
   const [travelers, setTravelers] = useState('4');
   const [days, setDays] = useState('');
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [isEditing, setIsEditing] = useState(false);
 
   // Filter state
@@ -108,6 +109,7 @@ export default function TripsScreen() {
     if (!selectedType) return;
     const template = TRIP_TEMPLATES[selectedType];
     setTripName(`${template.name}`);
+    setStartDate(new Date().toISOString().split('T')[0]);
     setShowPlanModal(true);
   }, [selectedType]);
 
@@ -118,9 +120,9 @@ export default function TripsScreen() {
     }
 
     const numDays = parseInt(days) || TRIP_TEMPLATES[selectedType].suggestedDuration.min;
-    const today = new Date();
-    const start = today.toISOString().split('T')[0];
-    const endDate = new Date(today.getTime() + (numDays - 1) * 24 * 60 * 60 * 1000);
+    const start = startDate;
+    const startDateObj = new Date(startDate + 'T12:00:00');
+    const endDate = new Date(startDateObj.getTime() + (numDays - 1) * 24 * 60 * 60 * 1000);
     const end = endDate.toISOString().split('T')[0];
 
     const plan = createTripPlan(
@@ -152,7 +154,7 @@ export default function TripsScreen() {
         Alert.alert('Sync Error', 'Trip saved locally but could not sync to cloud. It will retry next time.');
       }
     }
-  }, [selectedType, tripName, days, travelers, household?.id, user?.id, isEditing, currentPlan?.id]);
+  }, [selectedType, tripName, days, travelers, startDate, household?.id, user?.id, isEditing, currentPlan?.id]);
 
   const toggleChecklistItem = useCallback((categoryId: string, itemId: string) => {
     if (!currentPlan) return;
@@ -190,6 +192,7 @@ export default function TripsScreen() {
     setTripName(currentPlan.name);
     setTravelers(String(currentPlan.travelers));
     setDays(String(currentPlan.duration));
+    setStartDate(currentPlan.startDate);
     setSelectedType(currentPlan.type);
     setIsEditing(true);
     setShowPlanModal(true);
@@ -663,10 +666,32 @@ export default function TripsScreen() {
                 </View>
 
                 <View style={styles.startDateDisplay}>
-                  <Text style={styles.startDateLabel}>Starting</Text>
-                  <Text style={styles.startDateValue}>
-                    {formatDate(new Date().toISOString().split('T')[0])}
-                  </Text>
+                  <Text style={styles.startDateLabel}>Start Date</Text>
+                  <View style={styles.datePickerRow}>
+                    <Pressable
+                      style={styles.dateArrow}
+                      onPress={() => {
+                        const d = new Date(startDate + 'T12:00:00');
+                        d.setDate(d.getDate() - 1);
+                        setStartDate(d.toISOString().split('T')[0]);
+                      }}
+                    >
+                      <Text style={styles.dateArrowText}>←</Text>
+                    </Pressable>
+                    <Text style={styles.startDateValue}>
+                      {formatDate(startDate)}
+                    </Text>
+                    <Pressable
+                      style={styles.dateArrow}
+                      onPress={() => {
+                        const d = new Date(startDate + 'T12:00:00');
+                        d.setDate(d.getDate() + 1);
+                        setStartDate(d.toISOString().split('T')[0]);
+                      }}
+                    >
+                      <Text style={styles.dateArrowText}>→</Text>
+                    </Pressable>
+                  </View>
                 </View>
 
                 <Pressable style={styles.createButton} onPress={handleCreatePlan}>
@@ -1079,9 +1104,6 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
   },
   startDateDisplay: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
@@ -1091,9 +1113,28 @@ const styles = StyleSheet.create({
   startDateLabel: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text.secondary,
+    marginBottom: SPACING.xs,
+  },
+  datePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(212, 165, 71, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateArrowText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.gold.dark,
   },
   startDateValue: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.text.primary,
   },

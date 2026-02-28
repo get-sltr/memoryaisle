@@ -611,25 +611,89 @@ export const TRIP_TEMPLATES: Record<TripType, TripTemplate> = {
     suggestedDuration: { min: 1, max: 30 },
     checklists: [
       {
-        name: 'My Essentials',
-        icon: '📋',
+        name: 'Documents & Travel',
+        icon: '📄',
         items: [
-          { id: 'custom1', name: 'Add your items...', isPacked: false, isEssential: false },
+          { id: 'custom_passport', name: 'Passport/ID', isPacked: false, isEssential: true },
+          { id: 'custom_boarding', name: 'Boarding passes', isPacked: false, isEssential: true },
+          { id: 'custom_hotel_conf', name: 'Hotel confirmation', isPacked: false, isEssential: true },
+          { id: 'custom_insurance', name: 'Travel insurance docs', isPacked: false, isEssential: false },
+          { id: 'custom_wallet', name: 'Wallet/credit cards', isPacked: false, isEssential: true },
+          { id: 'custom_cash', name: 'Cash/local currency', isPacked: false, isEssential: false },
+        ],
+      },
+      {
+        name: 'Clothing & Personal',
+        icon: '👕',
+        items: [
+          { id: 'custom_clothes', name: 'Weather-appropriate clothes', isPacked: false, isEssential: true },
+          { id: 'custom_shoes', name: 'Comfortable walking shoes', isPacked: false, isEssential: true },
+          { id: 'custom_toiletries', name: 'Toiletries', isPacked: false, isEssential: true },
+          { id: 'custom_meds', name: 'Medications', isPacked: false, isEssential: true },
+          { id: 'custom_sunscreen', name: 'Sunscreen', isPacked: false, isEssential: false },
+          { id: 'custom_jacket', name: 'Light jacket/layers', isPacked: false, isEssential: false },
+        ],
+      },
+      {
+        name: 'Electronics',
+        icon: '🔌',
+        items: [
+          { id: 'custom_charger', name: 'Phone charger', isPacked: false, isEssential: true },
+          { id: 'custom_powerbank', name: 'Power bank', isPacked: false, isEssential: false },
+          { id: 'custom_camera', name: 'Camera', isPacked: false, isEssential: false },
+          { id: 'custom_adapter', name: 'Travel adapter', isPacked: false, isEssential: false },
+          { id: 'custom_headphones', name: 'Headphones', isPacked: false, isEssential: false },
+        ],
+      },
+      {
+        name: 'First Aid & Safety',
+        icon: '🩹',
+        items: [
+          { id: 'custom_firstaid', name: 'First aid kit', isPacked: false, isEssential: true },
+          { id: 'custom_sanitizer', name: 'Hand sanitizer', isPacked: false, isEssential: false },
+          { id: 'custom_masks', name: 'Face masks', isPacked: false, isEssential: false },
+          { id: 'custom_emergency', name: 'Emergency contacts list', isPacked: false, isEssential: true },
+        ],
+      },
+      {
+        name: 'Food & Snacks',
+        icon: '🍎',
+        items: [
+          { id: 'custom_water', name: 'Water bottles', isPacked: false, isEssential: true },
+          { id: 'custom_snacks', name: 'Snacks for travel', isPacked: false, isEssential: false },
+          { id: 'custom_dietary', name: 'Dietary essentials', isPacked: false, isEssential: false },
         ],
       },
     ],
     mealSuggestions: [
-      { complexity: 'quick_easy', meals: ['Your favorites'] },
-      { complexity: 'moderate', meals: ['Your favorites'] },
-      { complexity: 'gourmet', meals: ['Your favorites'] },
+      { complexity: 'quick_easy', meals: ['Sandwiches', 'Salads', 'Wraps', 'Fruit', 'Trail mix'] },
+      { complexity: 'moderate', meals: ['Pasta dishes', 'Grilled chicken', 'Stir fry', 'Tacos'] },
+      { complexity: 'gourmet', meals: ['Steak dinner', 'Seafood platter', 'Local cuisine', 'Fine dining'] },
     ],
     tips: [
-      'Plan ahead',
-      'Make a list',
+      'Plan ahead and research your destination',
+      'Make a detailed packing list',
+      'Keep important documents accessible',
       'Enjoy the journey!',
     ],
     estimatedDailyBudget: { min: 50, max: 200 },
   },
+};
+
+// ==================== TRIP COST ESTIMATES ====================
+
+const TRIP_COST_ESTIMATES: Record<TripType, { hotelPerNight: number; flightPerPerson: number }> = {
+  camping:          { hotelPerNight: 0,   flightPerPerson: 0 },
+  road_trip:        { hotelPerNight: 140, flightPerPerson: 0 },
+  beach_vacation:   { hotelPerNight: 200, flightPerPerson: 350 },
+  mountain_getaway: { hotelPerNight: 180, flightPerPerson: 300 },
+  city_break:       { hotelPerNight: 200, flightPerPerson: 350 },
+  family_reunion:   { hotelPerNight: 150, flightPerPerson: 300 },
+  holiday_travel:   { hotelPerNight: 180, flightPerPerson: 400 },
+  day_trip:         { hotelPerNight: 0,   flightPerPerson: 0 },
+  picnic:           { hotelPerNight: 0,   flightPerPerson: 0 },
+  tailgate:         { hotelPerNight: 0,   flightPerPerson: 0 },
+  custom:           { hotelPerNight: 180, flightPerPerson: 350 },
 };
 
 // ==================== TRIP RECIPES ====================
@@ -1619,13 +1683,18 @@ export function createTripPlan(
     meals,
     checklists,
     shoppingList,
-    estimatedBudget: {
-      food: template.estimatedDailyBudget.min * duration * 0.4,
-      gas: 0, // Would be calculated based on distance
-      accommodation: 0, // Would be input by user
-      activities: template.estimatedDailyBudget.min * duration * 0.3,
-      total: template.estimatedDailyBudget.min * duration,
-    },
+    estimatedBudget: (() => {
+      const costs = TRIP_COST_ESTIMATES[type];
+      const hotelPerNight = costs.hotelPerNight;
+      const hotelNights = duration > 1 ? duration - 1 : 0;
+      const accommodation = hotelPerNight * hotelNights;
+      const flights = costs.flightPerPerson * travelers;
+      const food = 50 * travelers * duration;
+      const activities = 30 * travelers * duration;
+      const gas = type === 'road_trip' ? calculateGasCost(500, 25) : 0;
+      const total = accommodation + flights + food + activities + gas;
+      return { food, gas, accommodation, flights, hotelPerNight, activities, total };
+    })(),
     miraNote: template.tips[0],
     status: 'planning',
     createdAt: new Date().toISOString(),
@@ -1641,7 +1710,7 @@ export function getRecipesForTrip(
   complexity?: MealComplexity
 ): TripRecipe[] {
   return TRIP_RECIPES.filter(recipe => {
-    const typeMatch = recipe.suitableFor.includes(tripType);
+    const typeMatch = tripType === 'custom' || recipe.suitableFor.includes(tripType);
     const complexityMatch = !complexity || recipe.complexity === complexity;
     return typeMatch && complexityMatch;
   });

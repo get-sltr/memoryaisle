@@ -405,6 +405,8 @@ export interface TripPlan {
     food: number;
     gas: number;
     accommodation: number;
+    flights: number;
+    hotelPerNight: number;
     activities: number;
     total: number;
   };

@@ -194,9 +194,19 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
 
     if (result.type === 'success' && result.url) {
       const url = new URL(result.url);
-      const params = new URLSearchParams(url.hash.substring(1));
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
+
+      // PKCE flow (Supabase JS v2 default): code is in query params
+      const code = new URLSearchParams(url.search).get('code');
+      if (code) {
+        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+        if (sessionError) throw sessionError;
+        return { success: true };
+      }
+
+      // Implicit flow fallback: tokens in hash fragment
+      const hashParams = new URLSearchParams(url.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
 
       if (accessToken && refreshToken) {
         const { error: sessionError } = await supabase.auth.setSession({
@@ -206,8 +216,10 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
         if (sessionError) throw sessionError;
         return { success: true };
       }
+
+      logger.error('OAuth: No code or tokens in callback URL', result.url);
     }
-    return { success: false, error: result.type === 'cancel' ? 'Sign in was cancelled' : 'OAuth failed' };
+    return { success: false, error: result.type === 'cancel' ? 'Sign in was cancelled' : 'Sign in failed. Please try again.' };
   } catch (error: any) {
     logger.error('OAuth error:', error);
     return { success: false, error: error.message };
