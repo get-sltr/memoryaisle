@@ -42,7 +42,7 @@ class RealtimeSyncService {
     this.familyId = familyId || null;
 
     // 1. Subscribe to core table changes
-    this.subscribeToTable('lists');
+    this.subscribeToTable('grocery_lists');
     this.subscribeToTable('list_items');
     this.subscribeToTable('family_members');
     this.subscribeToTable('notifications');
@@ -94,10 +94,10 @@ class RealtimeSyncService {
   }
 
   // Subscribe to a specific Postgres table
-  private subscribeToTable(table: string): void {
+  private subscribeToTable(table: string, retryCount = 0): void {
     if (this.subscriptions.has(table)) return;
 
-    const channelName = `table_${table}_${this.userId}`;
+    const channelName = `table_${table}_${this.userId || 'anon'}_${Date.now()}`;
     const callbacks = new Set<SyncCallback>();
 
     const channel = supabase
@@ -115,8 +115,17 @@ class RealtimeSyncService {
         }
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          logger.error(`Error subscribing to ${table}`);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          logger.warn(`Realtime ${status} for ${table} (attempt ${retryCount + 1})`);
+          // Clean up failed channel and retry with backoff (max 3 attempts)
+          if (retryCount < 3) {
+            channel.unsubscribe();
+            this.subscriptions.delete(table);
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+            setTimeout(() => this.subscribeToTable(table, retryCount + 1), delay);
+          } else {
+            logger.error(`Realtime: gave up subscribing to ${table} after ${retryCount + 1} attempts`);
+          }
         }
       });
 
@@ -126,14 +135,14 @@ class RealtimeSyncService {
 
   private getFilterForTable(table: string): string | undefined {
     switch (table) {
-      case 'lists':
+      case 'grocery_lists':
       case 'family_members':
       case 'family_activity':
-        return this.familyId ? `family_id=eq.${this.familyId}` : `user_id=eq.${this.userId}`;
+        return this.familyId ? `household_id=eq.${this.familyId}` : undefined;
       case 'notifications':
-        return `user_id=eq.${this.userId}`;
+        return this.userId ? `user_id=eq.${this.userId}` : undefined;
       case 'list_items':
-        return undefined; // Items filtered via RLS or parent list
+        return undefined; // Items filtered via RLS
       default:
         return undefined;
     }
@@ -171,7 +180,7 @@ class RealtimeSyncService {
   }
 
   // Convenience Methods
-  onListChange(callback: SyncCallback): () => void { return this.onTableChange('lists', callback); }
+  onListChange(callback: SyncCallback): () => void { return this.onTableChange('grocery_lists', callback); }
   onItemChange(callback: SyncCallback): () => void { return this.onTableChange('list_items', callback); }
   onFamilyChange(callback: SyncCallback): () => void { return this.onTableChange('family_members', callback); }
   onNotification(callback: SyncCallback): () => void { return this.onTableChange('notifications', callback); }

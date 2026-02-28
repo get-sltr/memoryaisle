@@ -1,21 +1,30 @@
 // src/services/iap.ts
 import { Platform, AppState, Dimensions } from 'react-native';
-import {
-  initConnection,
-  endConnection,
-  fetchProducts,
-  requestSubscription,
-  getAvailablePurchases,
-  finishTransaction,
-  purchaseUpdatedListener,
-  purchaseErrorListener,
-  ErrorCode,
-  type Purchase,
-  type PurchaseError,
-  type EventSubscription,
-} from 'react-native-iap';
+import { logger as iapLogger } from '../utils/logger';
+
+// Guard native module import — crashes in Expo Go where NitroModules aren't available
+let iapModule: any = null;
+try {
+  iapModule = require('react-native-iap');
+} catch {
+  iapLogger.warn('react-native-iap not available (Expo Go). IAP disabled.');
+}
+
+const initConnection = iapModule?.initConnection ?? (async () => {});
+const endConnection = iapModule?.endConnection ?? (async () => {});
+const fetchProducts = iapModule?.fetchProducts ?? (async () => []);
+const requestPurchase = iapModule?.requestPurchase ?? (async () => {});
+const getAvailablePurchases = iapModule?.getAvailablePurchases ?? (async () => []);
+const finishTransaction = iapModule?.finishTransaction ?? (async () => {});
+const purchaseUpdatedListener = iapModule?.purchaseUpdatedListener ?? (() => ({ remove: () => {} }));
+const purchaseErrorListener = iapModule?.purchaseErrorListener ?? (() => ({ remove: () => {} }));
+const ErrorCode = iapModule?.ErrorCode ?? {};
+
+type Purchase = any;
+type PurchaseError = any;
+type EventSubscription = { remove: () => void };
 import { supabase } from './supabase';
-import { logger } from '../utils/logger';
+const logger = iapLogger;
 
 export const IAP_PRODUCTS = {
   PREMIUM_YEARLY: 'com.memoryaisle.app.premium.yearly',
@@ -119,7 +128,7 @@ class IAPService {
   private async _doInitialize(): Promise<boolean> {
     try {
       try { await endConnection(); } catch {}
-      const isIPad = Platform.isPad || Dimensions.get('window').width >= 768;
+      const isIPad = (Platform as any).isPad || Dimensions.get('window').width >= 768;
       await delay(isIPad ? 4000 : 500); // Safe M-series delay
       await initConnection();
       this.initialized = true;
@@ -257,7 +266,12 @@ class IAPService {
         }, 120_000);
       });
 
-      await requestSubscription({ sku: IAP_PRODUCTS.PREMIUM_YEARLY });
+      await requestPurchase({
+        request: Platform.OS === 'ios'
+          ? { apple: { sku: IAP_PRODUCTS.PREMIUM_YEARLY } }
+          : { google: { skus: [IAP_PRODUCTS.PREMIUM_YEARLY] } },
+        type: 'subs',
+      });
       return resultPromise;
     } catch (error: any) {
       this.purchaseResolver = null;
@@ -271,7 +285,7 @@ class IAPService {
     if (!this.initialized && !(await this.safeInitialize(2))) return false;
     try {
       const purchases = await getAvailablePurchases();
-      const subPurchase = purchases?.find((p) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
+      const subPurchase = purchases?.find((p: any) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
       if (!subPurchase) return false;
 
       const activated = await this.activateSubscription(subPurchase);

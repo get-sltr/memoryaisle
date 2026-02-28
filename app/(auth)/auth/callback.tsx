@@ -42,9 +42,9 @@ export default function AuthCallbackScreen() {
 
       try {
         // 1. Default to Router params if Expo caught the link first
-        let accessToken = params.access_token || globalParams.access_token;
-        let refreshToken = params.refresh_token || globalParams.refresh_token;
-        let type = params.type || globalParams.type;
+        let accessToken: string | string[] | null = params.access_token || globalParams.access_token || null;
+        let refreshToken: string | string[] | null = params.refresh_token || globalParams.refresh_token || null;
+        let type: string | string[] | null = params.type || globalParams.type || null;
 
         // 2. If no Router params, safely parse the raw URL
         if (url && (!accessToken || !refreshToken)) {

@@ -60,13 +60,13 @@ export default function DietarySetup() {
   const { household, setHousehold } = useAuthStore();
 
   const [selectedDietary, setSelectedDietary] = useState<DietaryPreference[]>(
-    household?.dietary_preferences || []
+    (household?.dietary_preferences as DietaryPreference[] | undefined) || []
   );
   const [selectedAllergens, setSelectedAllergens] = useState<AllergenType[]>(
-    household?.familyProfile?.allergies || []
+    (household?.familyProfile as any)?.allergies || []
   );
   const [selectedCultural, setSelectedCultural] = useState<CulturalPreference[]>(
-    household?.cultural_preferences || []
+    (household?.cultural_preferences as CulturalPreference[] | undefined) || []
   );
   const [loading, setLoading] = useState(false);
 

@@ -3,8 +3,15 @@
 // All audio processing happens locally — no data leaves the device
 
 import { useCallback, useRef, useState } from 'react';
-import useModel from 'react-native-wakeword';
 import { logger } from '../utils/logger';
+
+// Guard native module import — crashes in Expo Go where NitroModules aren't available
+let useModelHook: (() => { loadModel: any; stopListening: any; setKeywordDetectionLicense: any }) | null = null;
+try {
+  useModelHook = require('react-native-wakeword').default;
+} catch {
+  logger.warn('react-native-wakeword not available (Expo Go). Wake word disabled.');
+}
 
 type WakeWordCallback = () => void;
 type ErrorCallback = (error: Error) => void;
@@ -30,7 +37,8 @@ const WAKE_WORD_CONFIG = {
  * Call stopWakeWord() on unmount.
  */
 export function useWakeWord() {
-  const { loadModel, stopListening, setKeywordDetectionLicense } = useModel();
+  const model = useModelHook ? useModelHook() : { loadModel: () => {}, stopListening: () => {}, setKeywordDetectionLicense: () => {} };
+  const { loadModel, stopListening, setKeywordDetectionLicense } = model;
   const [isListening, setIsListening] = useState(false);
   const callbackRef = useRef<WakeWordCallback | null>(null);
   const errorCallbackRef = useRef<ErrorCallback | null>(null);

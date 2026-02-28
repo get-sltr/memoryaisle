@@ -34,7 +34,7 @@ export default function RootLayout() {
     iapInitialized.current = true;
 
     // iPad M-series safe delay
-    const isIPad = Platform.isPad || (Dimensions.get('window').width >= 768);
+    const isIPad = (Platform as any).isPad || (Dimensions.get('window').width >= 768);
     const startupDelay = isIPad ? 4000 : 1500;
 
     setTimeout(async () => {
@@ -51,7 +51,7 @@ export default function RootLayout() {
     if (geofenceInitialized.current) return;
     geofenceInitialized.current = true;
     try {
-      await geofenceService.startMonitoring(householdId);
+      await geofenceService.startMonitoring(householdId, () => {}, () => {});
     } catch (error) {
       logger.warn('Geofence init failed:', error);
     }

@@ -100,7 +100,7 @@ class ErrorTrackingService {
               console.error('Failed to log error to database:', insertError);
             }
           })
-          .catch(() => {});
+          .then(() => {}, () => {});
       }
     } catch (err) {
       console.error('Error in error tracking:', err);
