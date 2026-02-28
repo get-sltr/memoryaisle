@@ -52,6 +52,7 @@ import {
 import { mira } from '../../src/services/mira';
 import { useWakeWord } from '../../src/services/wakeWord';
 import { useRealtimeSync } from '../../src/hooks/useRealtimeSync';
+import type { SyncCallback } from '../../src/services/realtimeSync';
 import {
   COLORS,
   FONTS,
@@ -358,14 +359,17 @@ export default function MainList() {
     setLoading(false);
   }, [reloadListData]);
 
-  // 🪄 NEW REALTIME SYNC HOOK 🪄
-  useRealtimeSync<ListItem>('list_items', (event) => {
-    // Only react to events if we have an active list, and the event belongs to this list
-    if (!list || event.record?.list_id !== list.id) return;
-    
-    // Fetch the freshest data from the server rather than trying to manually patch arrays
-    reloadListData(list.id);
-  });
+  // Realtime sync — debounced to prevent rapid-fire reloads
+  const realtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeSyncCallback = useCallback<SyncCallback<ListItem>>((event) => {
+    if (!listRef.current || event.record?.list_id !== listRef.current.id) return;
+    // Debounce: collapse rapid events into a single reload
+    if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+    realtimeTimerRef.current = setTimeout(() => {
+      if (listRef.current) reloadListData(listRef.current.id);
+    }, 300);
+  }, [reloadListData]);
+  useRealtimeSync<ListItem>('list_items', realtimeSyncCallback);
 
   // Create a new list
   const handleCreateList = useCallback(() => {
