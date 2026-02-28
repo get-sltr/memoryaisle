@@ -128,6 +128,8 @@ export default function MainList() {
   const [showListPicker, setShowListPicker] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingPage, setOnboardingPage] = useState(0);
+  const onboardingScrollRef = useRef<ScrollView>(null);
+  const ONBOARDING_SLIDE_WIDTH = Math.min(Dimensions.get('window').width - 64, 360);
 
   // Wake word detection
   const { startWakeWord, stopWakeWord, pauseWakeWord, resumeWakeWord } = useWakeWord();
@@ -1489,7 +1491,10 @@ export default function MainList() {
         )}
 
         {/* Onboarding Modal */}
-        <Modal visible={showOnboarding} transparent animationType="fade" onRequestClose={() => {}}>
+        <Modal visible={showOnboarding} transparent animationType="fade" onRequestClose={() => {
+          setShowOnboarding(false);
+          AsyncStorage.setItem('hasSeenOnboarding', 'true');
+        }}>
           <View style={styles.onboardingOverlay}>
             <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
             <View style={styles.onboardingCard}>
@@ -1501,18 +1506,19 @@ export default function MainList() {
               <View style={styles.onboardingCardBorder} />
 
               <ScrollView
+                ref={onboardingScrollRef}
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
                 onMomentumScrollEnd={(e) => {
-                  const page = Math.round(e.nativeEvent.contentOffset.x / (Dimensions.get('window').width - 64));
+                  const page = Math.round(e.nativeEvent.contentOffset.x / ONBOARDING_SLIDE_WIDTH);
                   setOnboardingPage(page);
                 }}
                 style={styles.onboardingScroll}
               >
                 {/* Slide 1: Voice */}
-                <View style={styles.onboardingSlide}>
+                <View style={[styles.onboardingSlide, { width: ONBOARDING_SLIDE_WIDTH }]}>
                   <View style={styles.onboardingIconCircle}>
                     <VoiceIcon size={36} color={COLORS.gold.base} />
                   </View>
@@ -1523,7 +1529,7 @@ export default function MainList() {
                 </View>
 
                 {/* Slide 2: Mira */}
-                <View style={styles.onboardingSlide}>
+                <View style={[styles.onboardingSlide, { width: ONBOARDING_SLIDE_WIDTH }]}>
                   <View style={[styles.onboardingIconCircle, { backgroundColor: 'rgba(212, 175, 55, 0.2)' }]}>
                     <Text style={{ fontSize: 36 }}>{'\u2728'}</Text>
                   </View>
@@ -1534,7 +1540,7 @@ export default function MainList() {
                 </View>
 
                 {/* Slide 3: Family */}
-                <View style={styles.onboardingSlide}>
+                <View style={[styles.onboardingSlide, { width: ONBOARDING_SLIDE_WIDTH }]}>
                   <View style={[styles.onboardingIconCircle, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
                     <FamilyIcon size={36} color="#4CAF50" />
                   </View>
@@ -1555,24 +1561,54 @@ export default function MainList() {
                 ))}
               </View>
 
-              {/* Get Started Button */}
-              <Pressable
-                style={styles.onboardingButton}
-                onPress={() => {
-                  setShowOnboarding(false);
-                  AsyncStorage.setItem('hasSeenOnboarding', 'true');
-                }}
-              >
-                <LinearGradient
-                  colors={[COLORS.gold.light, COLORS.gold.base, COLORS.gold.dark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-                <Text style={styles.onboardingButtonText}>
-                  {onboardingPage === 2 ? 'Get Started' : 'Skip'}
-                </Text>
-              </Pressable>
+              {/* Action Buttons */}
+              <View style={styles.onboardingButtonRow}>
+                {onboardingPage < 2 ? (
+                  <>
+                    <Pressable
+                      style={styles.onboardingSkipButton}
+                      onPress={() => {
+                        setShowOnboarding(false);
+                        AsyncStorage.setItem('hasSeenOnboarding', 'true');
+                      }}
+                    >
+                      <Text style={styles.onboardingSkipText}>Skip</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.onboardingNextButton}
+                      onPress={() => {
+                        const nextPage = onboardingPage + 1;
+                        onboardingScrollRef.current?.scrollTo({ x: nextPage * ONBOARDING_SLIDE_WIDTH, animated: true });
+                        setOnboardingPage(nextPage);
+                      }}
+                    >
+                      <LinearGradient
+                        colors={[COLORS.gold.light, COLORS.gold.base, COLORS.gold.dark]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <Text style={styles.onboardingButtonText}>Next</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Pressable
+                    style={styles.onboardingButton}
+                    onPress={() => {
+                      setShowOnboarding(false);
+                      AsyncStorage.setItem('hasSeenOnboarding', 'true');
+                    }}
+                  >
+                    <LinearGradient
+                      colors={[COLORS.gold.light, COLORS.gold.base, COLORS.gold.dark]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <Text style={styles.onboardingButtonText}>Get Started</Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
           </View>
         </Modal>
@@ -2660,8 +2696,6 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   onboardingSlide: {
-    width: Dimensions.get('window').width - 64,
-    maxWidth: 360,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.xxl,
     paddingBottom: SPACING.md,
@@ -2706,9 +2740,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gold.base,
     width: 20,
   },
-  onboardingButton: {
+  onboardingButtonRow: {
+    flexDirection: 'row',
     marginHorizontal: SPACING.xl,
     marginBottom: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  onboardingSkipButton: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md + 2,
+    alignItems: 'center',
+    backgroundColor: 'rgba(200, 205, 215, 0.25)',
+  },
+  onboardingSkipText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
+    letterSpacing: 0.5,
+  },
+  onboardingNextButton: {
+    flex: 2,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md + 2,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  onboardingButton: {
+    flex: 1,
     borderRadius: BORDER_RADIUS.lg,
     paddingVertical: SPACING.md + 2,
     alignItems: 'center',

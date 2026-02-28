@@ -1,51 +1,53 @@
-import { Redirect, useRootNavigationState } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { useRouter, useRootNavigationState } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
 import { useAuthStore } from '../src/stores/authStore';
 import { COLORS } from '../src/constants/theme';
 
 export default function Index() {
-  const { isAuthenticated, isGuest, user, household, isLoading } = useAuthStore();
+  const { isAuthenticated, isGuest, household, isLoading } = useAuthStore();
   const rootNavigationState = useRootNavigationState();
+  const router = useRouter();
+  const hasNavigated = useRef(false);
 
-  // 1. Wait for Expo Router's navigation tree to mount before trying to redirect
-  if (!rootNavigationState?.key) {
-    return <View style={{ flex: 1, backgroundColor: '#FDF5E6' }} />;
-  }
+  useEffect(() => {
+    // Wait for navigation tree and auth to be ready
+    if (!rootNavigationState?.key || isLoading) return;
 
-  // 2. Handle Auth loading state
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF5E6' }}>
-        <ActivityIndicator size="large" color={COLORS.gold.base} />
-      </View>
-    );
-  }
+    // Only navigate once — prevents the household/dietary screen from flashing away
+    if (hasNavigated.current) return;
+    hasNavigated.current = true;
 
-  // Guest mode -> Allow browsing the app without account
-  if (isGuest) {
-    return <Redirect href="/(app)" />;
-  }
+    if (isGuest) {
+      router.replace('/(app)');
+      return;
+    }
 
-  // Not authenticated -> Landing page
-  if (!isAuthenticated) {
-    return <Redirect href="/(auth)/landing" />;
-  }
+    if (!isAuthenticated) {
+      router.replace('/(auth)/landing');
+      return;
+    }
 
-  // Authenticated but no household -> Household setup
-  if (!household) {
-    return <Redirect href="/(auth)/household" />;
-  }
+    if (!household) {
+      router.replace('/(auth)/household');
+      return;
+    }
 
-  // Authenticated with household but no dietary setup done -> Dietary setup
-  const dietarySetupDone =
-    (household?.dietary_preferences && household.dietary_preferences.length > 0) ||
-    household?.familyProfile?.dietarySetupCompleted === true;
-    
-  if (!dietarySetupDone) {
-    return <Redirect href="/(auth)/dietary-setup" />;
-  }
+    const dietarySetupDone =
+      (household.dietary_preferences && household.dietary_preferences.length > 0) ||
+      household.familyProfile?.dietarySetupCompleted === true;
 
-  // Authenticated with household -> Main app
-  // Phone verification is optional and available in profile/settings
-  return <Redirect href="/(app)" />;
+    if (!dietarySetupDone) {
+      router.replace('/(auth)/dietary-setup');
+      return;
+    }
+
+    router.replace('/(app)');
+  }, [rootNavigationState?.key, isLoading, isAuthenticated, isGuest, household]);
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF5E6' }}>
+      <ActivityIndicator size="large" color={COLORS.gold.base} />
+    </View>
+  );
 }
