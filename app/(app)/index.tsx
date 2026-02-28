@@ -250,7 +250,11 @@ export default function MainList() {
     }
   }, [isDictating, isProcessingDictation]);
 
-  // Geofence monitoring
+  // Ref for items count so geofence callbacks always see latest value
+  const itemsCountRef = useRef(items.length);
+  useEffect(() => { itemsCountRef.current = items.length; }, [items.length]);
+
+  // Geofence monitoring — only restart when household changes, NOT on item changes
   useEffect(() => {
     if (!household?.id) return;
 
@@ -261,12 +265,12 @@ export default function MainList() {
           setArrivedStore(store);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Notifications.scheduleNotificationAsync({ content: { title: "You're at " + store.name, body: "Your shopping list is ready!", sound: true }, trigger: null });
-          notificationService.notifyStoreNearby(store.name, items.length);
+          notificationService.notifyStoreNearby(store.name, itemsCountRef.current);
           mira.speak(`You're at ${store.name}. Here's your list!`);
           setTimeout(() => setArrivedStore(null), 10000);
         },
         (store) => {
-          if (items.length > 0) {
+          if (itemsCountRef.current > 0) {
             mira.speak("Wait! Scan your receipt before you leave to check if you forgot anything.");
             setMiraStatus("Scan receipt before leaving!");
             setTimeout(() => setMiraStatus(null), 8000);
@@ -277,7 +281,7 @@ export default function MainList() {
 
     startGeofence();
     return () => geofenceService.stopMonitoring();
-  }, [household?.id, items.length]);
+  }, [household?.id]);
 
   // Cleanup Mira on unmount
   useEffect(() => {
