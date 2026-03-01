@@ -237,6 +237,7 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
     if (!data?.url) return { success: false, error: "No OAuth URL returned" };
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL);
+    console.log('OAuth browser result:', JSON.stringify(result));
 
     if (result.type === "success" && result.url) {
       const url = new URL(result.url);

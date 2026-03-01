@@ -79,7 +79,27 @@ export default function AuthCallbackScreen() {
           return;
         }
 
-        // 4. OAuth login flow
+        // 4. PKCE OAuth flow (code in query params)
+        let code: string | string[] | null = params.code || globalParams.code || null;
+        if (!code && url) {
+          try {
+            const urlObj = new URL(url);
+            code = new URLSearchParams(urlObj.search).get('code');
+          } catch {}
+        }
+
+        if (code) {
+          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code as string);
+          if (sessionError) {
+            logger.error('PKCE code exchange failed in callback', sessionError);
+            router.replace('/(auth)/sign-in');
+            return;
+          }
+          router.replace('/');
+          return;
+        }
+
+        // 5. Implicit OAuth flow (tokens in hash/params)
         if (accessToken && refreshToken) {
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken as string,
@@ -95,7 +115,7 @@ export default function AuthCallbackScreen() {
           return;
         }
 
-        // If no valid tokens found, bounce to login
+        // If no valid tokens or code found, bounce to login
         router.replace('/(auth)/sign-in');
       } catch (err) {
         logger.error('Auth callback error', err);

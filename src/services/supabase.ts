@@ -73,6 +73,7 @@ export function getSupabase(): SupabaseClient {
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
+      flowType: 'pkce',
     },
     // Optional: You can set a global schema here if you use multiple.
     // db: { schema: "public" },
