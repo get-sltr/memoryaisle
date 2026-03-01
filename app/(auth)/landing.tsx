@@ -156,6 +156,7 @@ export default function LandingScreen() {
         } finally {
           setLoading(false);
         }
+        setIsLoading(null);
         router.replace('/');
         return;
       }

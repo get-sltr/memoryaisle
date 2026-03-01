@@ -236,28 +236,41 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
     if (error) throw error;
     if (!data?.url) return { success: false, error: "No OAuth URL returned" };
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL);
-    console.log('OAuth browser result:', JSON.stringify(result));
+    // Race the browser session against a safety timeout.
+    // On some iOS devices, openAuthSessionAsync can hang if the deep link
+    // is intercepted by Expo Router instead of ASWebAuthenticationSession.
+    const BROWSER_TIMEOUT_MS = 90_000;
+    const result = await Promise.race([
+      WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL),
+      new Promise<{ type: "timeout" }>((resolve) =>
+        setTimeout(() => resolve({ type: "timeout" }), BROWSER_TIMEOUT_MS)
+      ),
+    ]);
 
-    if (result.type === "success" && result.url) {
-      const url = new URL(result.url);
-      const code = new URLSearchParams(url.search).get("code");
+    if (result.type === "cancel") return { success: false };
 
-      if (!code) {
-        // If you ever see this, your provider/Supabase settings may be misconfigured.
-        safeLogError("OAuth callback missing code", { message: "No code param", url: result.url });
-        return { success: false, error: "Sign in failed. Please try again." };
+    // Try to exchange the code if the browser returned one
+    if (result.type === "success" && "url" in result && result.url) {
+      const code = new URLSearchParams(new URL(result.url).search).get("code");
+      if (code) {
+        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+        if (!sessionError) return { success: true };
+        // Code may have already been exchanged by callback.tsx — fall through
       }
-
-      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-      if (sessionError) throw sessionError;
-
-      return { success: true };
     }
 
-    if (result.type === "cancel") return { success: false, error: "Sign in was cancelled" };
+    // Fallback: check if a session was established by any means
+    // (callback.tsx deep link, or a previous exchange)
+    const { data: session } = await supabase.auth.getSession();
+    if (session?.session) return { success: true };
+
     return { success: false, error: "Sign in failed. Please try again." };
   } catch (err) {
+    // Even on error, a session may have been established via callback.tsx
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (session?.session) return { success: true };
+    } catch {}
     safeLogError("OAuth error", err);
     return { success: false, error: toAuthError(err, "OAuth sign in failed") };
   }

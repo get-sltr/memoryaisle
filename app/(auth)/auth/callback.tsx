@@ -91,9 +91,14 @@ export default function AuthCallbackScreen() {
         if (code) {
           const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code as string);
           if (sessionError) {
-            logger.error('PKCE code exchange failed in callback', sessionError);
-            router.replace('/(auth)/sign-in');
-            return;
+            // Code may have already been exchanged by signInWithOAuthWeb —
+            // check if a session exists before treating as a real error
+            const { data: existingSession } = await supabase.auth.getSession();
+            if (!existingSession?.session) {
+              logger.error('PKCE code exchange failed in callback', sessionError);
+              router.replace('/(auth)/sign-in');
+              return;
+            }
           }
           router.replace('/');
           return;
