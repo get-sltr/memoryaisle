@@ -14,25 +14,15 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   isDark: false,
   colors: COLORS,
 
-  toggleTheme: async () => {
-    const newIsDark = !get().isDark;
-    set({
-      isDark: newIsDark,
-      colors: newIsDark ? COLORS_DARK as unknown as ThemeColors : COLORS,
-    });
-    await SecureStore.setItemAsync('theme', newIsDark ? 'dark' : 'light');
+  toggleTheme: () => {
+    // Dark mode disabled — light mode only for now
   },
 
   loadTheme: async () => {
+    // Force light mode; clear any saved dark preference
     try {
-      const savedTheme = await SecureStore.getItemAsync('theme');
-      const isDark = savedTheme === 'dark';
-      set({
-        isDark,
-        colors: isDark ? COLORS_DARK as unknown as ThemeColors : COLORS,
-      });
-    } catch (error) {
-      logger.error('Error loading theme:', error);
-    }
+      await SecureStore.deleteItemAsync('theme');
+    } catch {}
+    set({ isDark: false, colors: COLORS });
   },
 }));

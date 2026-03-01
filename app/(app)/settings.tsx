@@ -93,7 +93,7 @@ function SettingRow({
 export default function SettingsScreen() {
   const { user, household, signOut: clearAuthStore } = useAuthStore();
   const { subscription, isPremium, isLoading, product, restorePurchases, refresh } = useSubscription();
-  const { isDark, toggleTheme } = useThemeStore();
+  const _theme = useThemeStore(); // keep import active for ScreenWrapper
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -265,20 +265,6 @@ export default function SettingsScreen() {
               'plain-text'
             );
           },
-        },
-      ]
-    );
-  };
-
-  const handleAppearance = () => {
-    Alert.alert(
-      'Appearance',
-      `Current theme: ${isDark ? 'Dark' : 'Light'}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: isDark ? 'Switch to Light' : 'Switch to Dark',
-          onPress: toggleTheme,
         },
       ]
     );
@@ -606,12 +592,7 @@ export default function SettingsScreen() {
             }
             onPress={handleNotifications}
           />
-          <SettingRow
-            icon="🎨"
-            title="Appearance"
-            subtitle={isDark ? 'Dark mode' : 'Light mode'}
-            onPress={handleAppearance}
-          />
+          {/* Dark mode disabled for now — light mode only */}
         </SectionCard>
 
         {/* Support Section */}

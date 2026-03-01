@@ -551,13 +551,12 @@ export default function MainList() {
   const handleSignOut = async () => {
     if (isGuest) {
       useAuthStore.getState().signOut();
-      appRouter.replace('/');
+      appRouter.replace('/(auth)/landing');
       return;
     }
     await signOut();
-    setUser(null);
-    setHousehold(null);
-    appRouter.replace('/');
+    useAuthStore.getState().signOut();
+    appRouter.replace('/(auth)/landing');
   };
 
   return (
