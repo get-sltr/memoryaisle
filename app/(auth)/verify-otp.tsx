@@ -139,33 +139,38 @@ export default function VerifyOTP() {
     }
 
     setLoading(true);
-    const { success, error } = await verifyPhoneOTP(phone, otpCode);
-    setLoading(false);
-
-    if (!success) {
-      Alert.alert('Verification Failed', error || 'Invalid code. Please try again.');
-      // Clear OTP inputs
-      setOtp(new Array(OTP_LENGTH).fill(''));
-      inputRefs.current[0]?.focus();
-      return;
+    try {
+      const { success, error } = await verifyPhoneOTP(phone, otpCode);
+      if (!success) {
+        Alert.alert('Verification Failed', error || 'Invalid code. Please try again.');
+        setOtp(new Array(OTP_LENGTH).fill(''));
+        inputRefs.current[0]?.focus();
+        return;
+      }
+      router.replace('/');
+    } catch (e: any) {
+      Alert.alert('Verification failed', e?.message ?? 'Unknown error');
+    } finally {
+      setLoading(false);
     }
-
-    // Success - navigate to home or household setup
-    router.replace('/');
   };
 
   const handleResend = async () => {
     if (resendCountdown > 0 || !phone) return;
 
     setResendLoading(true);
-    const { success, error } = await resendPhoneOTP(phone);
-    setResendLoading(false);
-
-    if (success) {
-      setResendCountdown(30);
-      Alert.alert('Code Sent', 'A new verification code has been sent to your phone');
-    } else {
-      Alert.alert('Error', error || 'Failed to resend code');
+    try {
+      const { success, error } = await resendPhoneOTP(phone);
+      if (success) {
+        setResendCountdown(30);
+        Alert.alert('Code Sent', 'A new verification code has been sent to your phone');
+      } else {
+        Alert.alert('Error', error || 'Failed to resend code');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to resend code');
+    } finally {
+      setResendLoading(false);
     }
   };
 

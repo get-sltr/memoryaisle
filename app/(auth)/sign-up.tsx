@@ -87,34 +87,40 @@ export default function SignUp() {
     }
 
     setLoading(true);
-    const { success, error } = await signUp(email, password, name);
-    setLoading(false);
-
-    if (!success) {
-      Alert.alert('Error', error || 'Failed to create account');
-      return;
+    try {
+      const { success, error } = await signUp(email, password, name);
+      if (!success) {
+        Alert.alert('Error', error || 'Failed to create account');
+        return;
+      }
+      Alert.alert(
+        'Check your email',
+        'We sent you a confirmation link. Please check your email to verify your account.',
+        [{ text: 'OK', onPress: () => router.replace('/(auth)/sign-in') }]
+      );
+    } catch (e: any) {
+      Alert.alert('Sign up failed', e?.message ?? 'Unknown error');
+    } finally {
+      setLoading(false);
     }
-
-    Alert.alert(
-      'Check your email',
-      'We sent you a confirmation link. Please check your email to verify your account.',
-      [{ text: 'OK', onPress: () => router.replace('/(auth)/sign-in') }]
-    );
   };
 
   const handleOAuthSignIn = async (provider: 'google' | 'facebook' | 'apple') => {
     setOauthLoading(provider);
-    const { success, error } = await signInWithOAuth(provider);
-    setOauthLoading(null);
-
-    if (!success) {
-      if (error !== 'Sign in was cancelled') {
-        Alert.alert('Error', error || `Failed to sign up with ${provider}`);
+    try {
+      const { success, error } = await signInWithOAuth(provider);
+      if (!success) {
+        if (error && error !== 'Sign in was cancelled') {
+          Alert.alert('Error', error || `Failed to sign up with ${provider}`);
+        }
+        return;
       }
-      return;
+      router.replace('/');
+    } catch (e: any) {
+      Alert.alert('Sign up failed', e?.message ?? 'Unknown error');
+    } finally {
+      setOauthLoading(null);
     }
-
-    router.replace('/');
   };
 
   return (

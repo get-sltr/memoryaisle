@@ -80,15 +80,18 @@ export default function SignIn() {
     }
 
     setLoading(true);
-    const { success, error } = await signIn(email, password);
-    setLoading(false);
-
-    if (!success) {
-      Alert.alert('Error', error || 'Failed to sign in');
-      return;
+    try {
+      const { success, error } = await signIn(email, password);
+      if (!success) {
+        Alert.alert('Error', error || 'Failed to sign in');
+        return;
+      }
+      router.replace('/');
+    } catch (e: any) {
+      Alert.alert('Sign in failed', e?.message ?? 'Unknown error');
+    } finally {
+      setLoading(false);
     }
-
-    router.replace('/');
   };
 
   const handleForgotPassword = async () => {
@@ -106,17 +109,20 @@ export default function SignIn() {
 
   const handleOAuthSignIn = async (provider: 'google' | 'facebook' | 'apple') => {
     setOauthLoading(provider);
-    const { success, error } = await signInWithOAuth(provider);
-    setOauthLoading(null);
-
-    if (!success) {
-      if (error !== 'Sign in was cancelled') {
-        Alert.alert('Error', error || `Failed to sign in with ${provider}`);
+    try {
+      const { success, error } = await signInWithOAuth(provider);
+      if (!success) {
+        if (error && error !== 'Sign in was cancelled') {
+          Alert.alert('Error', error || `Failed to sign in with ${provider}`);
+        }
+        return;
       }
-      return;
+      router.replace('/');
+    } catch (e: any) {
+      Alert.alert('Sign in failed', e?.message ?? 'Unknown error');
+    } finally {
+      setOauthLoading(null);
     }
-
-    router.replace('/');
   };
 
   return (

@@ -45,24 +45,21 @@ export default function HouseholdSetup() {
     }
 
     setLoading(true);
-    const { household, error } = await createHousehold(householdName.trim(), householdSize);
-    setLoading(false);
-
-    if (error || !household) {
-      Alert.alert('Error', error || 'Failed to create household');
-      return;
+    try {
+      const { household, error } = await createHousehold(householdName.trim(), householdSize);
+      if (error || !household) {
+        Alert.alert('Error', error || 'Failed to create household');
+        return;
+      }
+      const updatedUser = await getCurrentUser();
+      if (updatedUser) setUser(updatedUser);
+      setHousehold(household);
+      router.replace('/(auth)/dietary-setup');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to create household');
+    } finally {
+      setLoading(false);
     }
-
-    // Refresh user to get updated household_id
-    const updatedUser = await getCurrentUser();
-    if (updatedUser) {
-      setUser(updatedUser);
-    }
-
-
-    setHousehold(household);
-    // Navigate directly to app to bypass root router check
-    router.replace('/(auth)/dietary-setup');
   };
 
   const handleJoin = async () => {
@@ -72,39 +69,32 @@ export default function HouseholdSetup() {
     }
 
     setLoading(true);
-    const { household, error, needsPremium } = await joinHousehold(inviteCode.trim());
-    setLoading(false);
-
-    if (error || !household) {
-      if (needsPremium) {
-        // Show paywall for the household owner to upgrade
-        Alert.alert(
-          'Premium Required',
-          error || 'The household owner needs to upgrade to Premium to add more members.',
-          [
-            { text: 'OK', style: 'cancel' },
-            {
-              text: 'Learn More',
-              onPress: () => setShowPaywall(true),
-            },
-          ]
-        );
+    try {
+      const { household, error, needsPremium } = await joinHousehold(inviteCode.trim());
+      if (error || !household) {
+        if (needsPremium) {
+          Alert.alert(
+            'Premium Required',
+            error || 'The household owner needs to upgrade to Premium to add more members.',
+            [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Learn More', onPress: () => setShowPaywall(true) },
+            ]
+          );
+          return;
+        }
+        Alert.alert('Error', error || 'Failed to join household');
         return;
       }
-      Alert.alert('Error', error || 'Failed to join household');
-      return;
+      const updatedUser = await getCurrentUser();
+      if (updatedUser) setUser(updatedUser);
+      setHousehold(household);
+      router.replace('/(auth)/dietary-setup');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to join household');
+    } finally {
+      setLoading(false);
     }
-
-    // Refresh user to get updated household_id
-    const updatedUser = await getCurrentUser();
-    if (updatedUser) {
-      setUser(updatedUser);
-    }
-
-
-    setHousehold(household);
-    // Navigate directly to app to bypass root router check
-    router.replace('/(auth)/dietary-setup');
   };
 
   return (

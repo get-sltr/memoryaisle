@@ -79,19 +79,21 @@ export default function PhoneSignIn() {
     }
 
     setLoading(true);
-    const { success, error } = await sendPhoneOTP(digits);
-    setLoading(false);
-
-    if (!success) {
-      Alert.alert('Error', error || 'Failed to send verification code');
-      return;
+    try {
+      const { success, error } = await sendPhoneOTP(digits);
+      if (!success) {
+        Alert.alert('Error', error || 'Failed to send verification code');
+        return;
+      }
+      router.push({
+        pathname: '/(auth)/verify-otp',
+        params: { phone: digits },
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to send verification code');
+    } finally {
+      setLoading(false);
     }
-
-    // Navigate to OTP verification with phone number
-    router.push({
-      pathname: '/(auth)/verify-otp',
-      params: { phone: digits },
-    });
   };
 
   return (
