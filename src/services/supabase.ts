@@ -1,39 +1,85 @@
-import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
-import Constants from 'expo-constants';
-import 'react-native-url-polyfill/auto';
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import * as SecureStore from "expo-secure-store";
+import Constants from "expo-constants";
+import "react-native-url-polyfill/auto";
 
-// Load configuration from environment variables via expo-constants
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || '';
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
-
-// Simple SecureStore adapter for Supabase auth session persistence.
-// SecureStore uses iOS Keychain / Android Keystore (hardware-backed encryption).
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+type ExtraConfig = {
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    storage: ExpoSecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+const extra = (Constants.expoConfig?.extra ?? {}) as ExtraConfig;
 
-// Validate configuration on startup
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    '[MemoryAisle] Supabase not configured. ' +
-    'Create a .env file with SUPABASE_URL and SUPABASE_ANON_KEY. ' +
-    'See .env.example for details.'
-  );
+const SUPABASE_URL = (extra.supabaseUrl ?? "").trim();
+const SUPABASE_ANON_KEY = (extra.supabaseAnonKey ?? "").trim();
+
+function isValidHttpsUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" && !!u.host;
+  } catch {
+    return false;
+  }
 }
 
-// Helper to check if Supabase is configured
-export const isSupabaseConfigured = (): boolean => {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.includes('supabase.co'));
+/**
+ * Expo SecureStore adapter for supabase-js.
+ * We set conservative iOS Keychain accessibility to reduce leakage via backups.
+ */
+const ExpoSecureStoreAdapter = {
+  async getItem(key: string) {
+    return SecureStore.getItemAsync(key);
+  },
+  async setItem(key: string, value: string) {
+    // Note: Not all platforms honor all options, but safe to pass.
+    return SecureStore.setItemAsync(key, value, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  },
+  async removeItem(key: string) {
+    return SecureStore.deleteItemAsync(key);
+  },
 };
+
+export const isSupabaseConfigured = (): boolean => {
+  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && isValidHttpsUrl(SUPABASE_URL));
+};
+
+let _supabase: SupabaseClient | null = null;
+
+/**
+ * Use getSupabase() so you can fail fast and avoid half-configured clients.
+ * If you prefer your current style (export const supabase = createClient...), you can,
+ * but this pattern prevents confusing runtime failures.
+ */
+export function getSupabase(): SupabaseClient {
+  if (_supabase) return _supabase;
+
+  if (!isSupabaseConfigured()) {
+    // In production you may want to return a "disabled client" instead of throwing.
+    const msg =
+      "[MemoryAisle] Supabase not configured. " +
+      "Check app config extra.supabaseUrl and extra.supabaseAnonKey.";
+    // Throwing in dev helps you catch issues immediately.
+    if (__DEV__) throw new Error(msg);
+    // In prod, log and still create a client to avoid hard crash,
+    // but requests will fail; consider handling this in UI.
+    console.warn(msg);
+  }
+
+  _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      storage: ExpoSecureStoreAdapter,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+    // Optional: You can set a global schema here if you use multiple.
+    // db: { schema: "public" },
+  });
+
+  return _supabase;
+}
+
+// Backwards compatible export (if your code expects `supabase` directly).
+export const supabase = getSupabase();

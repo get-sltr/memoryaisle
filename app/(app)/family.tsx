@@ -162,6 +162,7 @@ export default function FamilyScreen() {
   const [sparkJoySuggestion, setSparkJoySuggestion] = useState<string | null>(null);
   const [isLoadingSparkJoy, setIsLoadingSparkJoy] = useState(false);
 
+
   // Track changes
   useEffect(() => {
     const original = household?.familyProfile || {};
@@ -216,7 +217,11 @@ export default function FamilyScreen() {
         name: data.name,
         role: data.role,
       }];
-      setHousehold({ ...household, members: updatedMembers });
+      setHousehold({
+        ...household,
+        members: updatedMembers,
+        member_count: updatedMembers.length,
+      });
 
       setNewMemberName('');
       setNewMemberRole('other');
@@ -250,7 +255,11 @@ export default function FamilyScreen() {
               if (error) throw error;
 
               const updatedMembers = (household.members || []).filter(m => m.id !== member.id);
-              setHousehold({ ...household, members: updatedMembers });
+              setHousehold({
+                ...household,
+                members: updatedMembers,
+                member_count: updatedMembers.length,
+              });
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to remove family member');
             }

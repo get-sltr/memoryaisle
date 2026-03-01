@@ -11,9 +11,10 @@
 
 // SHA-256 fingerprint of Apple Root CA - G3 (ECDSA P-384)
 // Source: https://www.apple.com/certificateauthority/
-// If Apple introduces a new root CA, add its fingerprint here.
+// Verified: 63:34:3a:bf:b8:9a:6a:03:eb:b5:7e:9b:3f:5f:a7:be:7c:4f:5c:75:6f:30:17:b3:a8:c4:88:c3:65:3e:91:79
+// IMPORTANT: This must be exactly 64 hex characters (32 bytes).
 const APPLE_ROOT_CA_G3_SHA256 =
-  '63343abfb89a6a03ebb57e903c2100285e633336d18407d3b22dcda1b18dd071';
+  '63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179';
 
 // ─── Public API ──────────────────────────────────────────────
 

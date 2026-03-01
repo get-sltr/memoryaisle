@@ -1,63 +1,46 @@
-import { useEffect, useRef } from 'react';
-import { useRouter, useRootNavigationState } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+// app/index.tsx
+// Root route — decides where to send users based on auth + household state.
+// Without this file, Expo Router defaults ALL users to /(app)/index.tsx.
+import { Redirect } from 'expo-router';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuthStore } from '../src/stores/authStore';
-import { COLORS } from '../src/constants/theme';
 
-export default function Index() {
-  const { isAuthenticated, isGuest, household, isLoading } = useAuthStore();
-  const rootNavigationState = useRootNavigationState();
-  const router = useRouter();
-  const hasNavigated = useRef(false);
+export default function RootIndex() {
+  const { user, household, isLoading, isGuest } = useAuthStore();
 
-  // Reset hasNavigated when auth state changes (e.g. sign-out) so navigation can re-fire
-  const prevAuthKey = useRef(`${isAuthenticated}-${isGuest}`);
-  useEffect(() => {
-    const authKey = `${isAuthenticated}-${isGuest}`;
-    if (prevAuthKey.current !== authKey) {
-      prevAuthKey.current = authKey;
-      hasNavigated.current = false;
-    }
-  }, [isAuthenticated, isGuest]);
+  // Still bootstrapping — show loading (splash screen handles visual)
+  if (isLoading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#D4AF37" />
+      </View>
+    );
+  }
 
-  useEffect(() => {
-    // Wait for navigation tree and auth to be ready
-    if (!rootNavigationState?.key || isLoading) return;
+  // Guest mode — limited app access
+  if (isGuest) {
+    return <Redirect href="/(app)" />;
+  }
 
-    // Only navigate once per auth state — prevents the household/dietary screen from flashing away
-    if (hasNavigated.current) return;
-    hasNavigated.current = true;
+  // Not authenticated — go to sign in
+  if (!user) {
+    return <Redirect href="/(auth)/landing" />;
+  }
 
-    if (isGuest) {
-      router.replace('/(app)');
-      return;
-    }
+  // Authenticated but no household — onboarding
+  if (!household) {
+    return <Redirect href="/(auth)/household" />;
+  }
 
-    if (!isAuthenticated) {
-      router.replace('/(auth)/landing');
-      return;
-    }
-
-    if (!household) {
-      router.replace('/(auth)/household');
-      return;
-    }
-
-    const dietarySetupDone =
-      (household.dietary_preferences && household.dietary_preferences.length > 0) ||
-      household.familyProfile?.dietarySetupCompleted === true;
-
-    if (!dietarySetupDone) {
-      router.replace('/(auth)/dietary-setup');
-      return;
-    }
-
-    router.replace('/(app)');
-  }, [rootNavigationState?.key, isLoading, isAuthenticated, isGuest, household]);
-
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF5E6' }}>
-      <ActivityIndicator size="large" color={COLORS.gold.base} />
-    </View>
-  );
+  // Fully set up — main app
+  return <Redirect href="/(app)" />;
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FDF5E6',
+  },
+});

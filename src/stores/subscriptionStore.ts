@@ -1,73 +1,133 @@
-// src/stores/subscriptionStore.ts
-import { create } from 'zustand';
-import { supabase } from '../services/supabase';
-import { iapService, SubscriptionInfo } from '../services/iap';
-import { adminService } from '../services/admin';
-import { logger } from '../utils/logger';
+import { create } from "zustand";
+import { supabase } from "../services/supabase";
+import { iapService, type SubscriptionInfo } from "../services/iap";
+import { adminService } from "../services/admin";
+import { logger } from "../utils/logger";
+
+type CleanupFn = () => void;
 
 interface SubscriptionState {
-  subscription: SubscriptionInfo | null;
+  currentUserId: string | null;
+  subscription: SubscriptionInfo;
   isLoading: boolean;
-  activeCleanup: (() => void) | null;
-  fetchSubscription: (userId: string | undefined) => Promise<void>;
-  setupListeners: (userId: string) => () => void;
-  initialize: (userId: string) => void;
+
+  // internal
+  activeCleanup: CleanupFn | null;
+  requestSeq: number;
+
+  fetchSubscription: (userId?: string) => Promise<void>;
+  initialize: (userId: string) => Promise<void>;
   cleanup: () => void;
 }
 
-export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
-  subscription: null,
-  isLoading: true,
-  activeCleanup: null,
+const FREE: SubscriptionInfo = { tier: "free", status: "none" };
 
-  fetchSubscription: async (userId) => {
-    if (!userId) {
-      set({ subscription: { tier: 'free', status: 'none' }, isLoading: false });
+export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
+  currentUserId: null,
+  subscription: FREE,
+  isLoading: false,
+
+  activeCleanup: null,
+  requestSeq: 0,
+
+  fetchSubscription: async (userId?: string) => {
+    const resolvedUserId = userId ?? get().currentUserId ?? undefined;
+
+    // If no user, hard reset
+    if (!resolvedUserId) {
+      set({ subscription: FREE, isLoading: false });
       return;
     }
-    set({ isLoading: true });
+
+    // request sequence guard to prevent race overwrites
+    const seq = get().requestSeq + 1;
+    set({ isLoading: true, requestSeq: seq });
+
     try {
-      const isAdmin = await adminService.isAdmin();
-      if (isAdmin) {
-        set({ subscription: { tier: 'premium', status: 'active' }, isLoading: false });
+      // IMPORTANT: Admin override should never be a production entitlement mechanism.
+      // If you keep it, make it dev-only or behind a secure server-verified flag.
+      let allowAdminPremium = false;
+      if (__DEV__) {
+        try {
+          allowAdminPremium = await adminService.isAdmin();
+        } catch {
+          allowAdminPremium = false;
+        }
+      }
+
+      if (allowAdminPremium) {
+        // Only for local dev/testing
+        if (get().requestSeq === seq) {
+          set({ subscription: { tier: "premium", status: "active" }, isLoading: false });
+        }
         return;
       }
-      const sub = await iapService.getSubscription(userId);
+
+      const sub = await iapService.getSubscription(resolvedUserId);
+
+      // Ignore stale responses
+      if (get().requestSeq !== seq) return;
+
       set({ subscription: sub, isLoading: false });
-    } catch (error) {
-      logger.error('Subscription fetch failed, defaulting to free', error);
-      set({ subscription: { tier: 'free', status: 'none' }, isLoading: false });
+    } catch (err) {
+      logger.error("Subscription fetch failed, defaulting to free", { message: (err as any)?.message });
+      if (get().requestSeq === seq) {
+        set({ subscription: FREE, isLoading: false });
+      }
     }
   },
 
-  setupListeners: (userId: string) => {
+  initialize: async (userId: string) => {
+    // Tear down any existing listeners first (prevents duplicates)
+    get().cleanup();
+
+    set({ currentUserId: userId, isLoading: true });
+
+    // First fetch
+    await get().fetchSubscription(userId);
+
+    // Setup listeners (use currentUserId from state, not captured variable)
     const unsubscribeIAP = iapService.onStatusChange(() => {
-      get().fetchSubscription(userId);
+      const id = get().currentUserId;
+      if (id) get().fetchSubscription(id);
     });
+
     const channel = supabase
       .channel(`subscription-${userId}`)
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
-        () => get().fetchSubscription(userId)
+        "postgres_changes",
+        { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${userId}` },
+        () => {
+          const id = get().currentUserId;
+          if (id) get().fetchSubscription(id);
+        }
       )
-      .subscribe();
+      .subscribe((status) => {
+        // Helpful visibility in prod debugging
+        if (status === "CHANNEL_ERROR") {
+          logger.warn("Subscription realtime channel error");
+        }
+      });
 
-    return () => {
-      unsubscribeIAP();
-      supabase.removeChannel(channel);
+    const activeCleanup: CleanupFn = () => {
+      try { unsubscribeIAP(); } catch {}
+      try { supabase.removeChannel(channel); } catch {}
     };
-  },
 
-  initialize: (userId: string) => {
-    get().fetchSubscription(userId);
-    const cleanupListeners = get().setupListeners(userId);
-    set({ activeCleanup: cleanupListeners });
+    set({ activeCleanup });
   },
 
   cleanup: () => {
-    const { activeCleanup } = get();
-    if (activeCleanup) activeCleanup();
-    set({ subscription: { tier: 'free', status: 'none' }, isLoading: false, activeCleanup: null });
+    const cleanup = get().activeCleanup;
+    if (cleanup) {
+      try { cleanup(); } catch {}
+    }
+
+    set({
+      currentUserId: null,
+      subscription: FREE,
+      isLoading: false,
+      activeCleanup: null,
+    });
   },
 }));

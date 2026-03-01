@@ -1,11 +1,12 @@
-import { supabase } from './supabase';
-import * as WebBrowser from 'expo-web-browser';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import { Platform } from 'react-native';
-import type { User, Household } from '../types';
-import { logger } from '../utils/logger';
+import { supabase } from "./supabase";
+import * as WebBrowser from "expo-web-browser";
+import * as AppleAuthentication from "expo-apple-authentication";
+import { Platform } from "react-native";
+import type { User, Household } from "../types";
+import { logger } from "../utils/logger";
 
-// Complete any pending auth sessions
+// If you keep this here, be aware it's a module import side-effect.
+// Alternatively call it once in your app bootstrap.
 WebBrowser.maybeCompleteAuthSession();
 
 export interface AuthResponse {
@@ -13,67 +14,97 @@ export interface AuthResponse {
   error?: string;
 }
 
-// OAuth provider types
-export type OAuthProvider = 'google' | 'facebook' | 'apple';
-
-// Phone auth response types
 export interface PhoneAuthResponse extends AuthResponse {
   needsVerification?: boolean;
 }
 
+export type OAuthProvider = "google" | "facebook" | "apple";
+
+/**
+ * Single source of truth for redirect URL.
+ * Must match:
+ * - Expo scheme config (app.json/app.config)
+ * - iOS URL Types
+ * - Supabase Auth redirect allowlist
+ */
+const REDIRECT_URL = "memoryaisle://auth/callback";
+
+/**
+ * Avoid logging raw error objects (can include PII / tokens).
+ */
+function toAuthError(err: unknown, fallback = "Something went wrong"): string {
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const anyErr = err as any;
+    return anyErr?.message || anyErr?.error_description || fallback;
+  }
+  return fallback;
+}
+
+function safeLogError(context: string, err: unknown) {
+  const anyErr = err as any;
+  logger.error(context, {
+    message: toAuthError(err),
+    code: anyErr?.code,
+    status: anyErr?.status,
+    name: anyErr?.name,
+  });
+}
+
 // ==================== PHONE AUTH ====================
 
-// Send OTP to phone number via Supabase (Twilio)
+function formatPhoneNumberE164Loose(phone: string): string {
+  // Best practice: use libphonenumber-js to format/validate E.164.
+  // This is a "loose" fallback; consider replacing with a real formatter.
+  let cleaned = phone.trim().replace(/[^\d+]/g, "");
+  if (!cleaned) return "";
+
+  if (!cleaned.startsWith("+")) {
+    // Default to US if 10 digits; otherwise just prefix '+'.
+    if (cleaned.length === 10) cleaned = `+1${cleaned}`;
+    else cleaned = `+${cleaned}`;
+  }
+  return cleaned;
+}
+
 export async function sendPhoneOTP(phone: string): Promise<PhoneAuthResponse> {
   try {
-    const formattedPhone = formatPhoneNumber(phone);
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: formattedPhone,
-    });
+    const formatted = formatPhoneNumberE164Loose(phone);
+    if (!formatted) return { success: false, error: "Invalid phone number" };
 
+    const { error } = await supabase.auth.signInWithOtp({ phone: formatted });
     if (error) throw error;
+
     return { success: true, needsVerification: true };
-  } catch (error: any) {
-    logger.error('Phone OTP error:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Phone OTP error", err);
+    return { success: false, error: toAuthError(err, "Failed to send OTP") };
   }
 }
 
-// Verify phone OTP via Supabase (Twilio)
 export async function verifyPhoneOTP(phone: string, otp: string): Promise<AuthResponse> {
   try {
-    const formattedPhone = formatPhoneNumber(phone);
+    const formatted = formatPhoneNumberE164Loose(phone);
+    if (!formatted) return { success: false, error: "Invalid phone number" };
+
     const { data, error } = await supabase.auth.verifyOtp({
-      phone: formattedPhone,
+      phone: formatted,
       token: otp,
-      type: 'sms',
+      type: "sms",
     });
 
     if (error) throw error;
-    if (!data.user) throw new Error('Verification failed');
+    if (!data?.user) return { success: false, error: "Verification failed" };
+
     return { success: true };
-  } catch (error: any) {
-    logger.error('Phone verification error:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Phone verification error", err);
+    return { success: false, error: toAuthError(err, "Failed to verify OTP") };
   }
 }
 
 export async function resendPhoneOTP(phone: string): Promise<AuthResponse> {
   return sendPhoneOTP(phone);
-}
-
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/[^\d+]/g, '');
-  if (!cleaned.startsWith('+')) {
-    if (cleaned.startsWith('1') && cleaned.length === 11) {
-      cleaned = '+' + cleaned;
-    } else if (cleaned.length === 10) {
-      cleaned = '+1' + cleaned;
-    } else {
-      cleaned = '+' + cleaned;
-    }
-  }
-  return cleaned;
 }
 
 // ==================== EMAIL AUTH ====================
@@ -87,30 +118,26 @@ export async function signUp(email: string, password: string, name: string): Pro
     });
 
     if (error) throw error;
-    if (!data.user) throw new Error('No user returned');
+    if (!data?.user?.id) return { success: false, error: "No user returned" };
 
+    // Make sure your RPC is idempotent (insert-if-not-exists).
     await ensureUserProfile(data.user.id, email, name);
     return { success: true };
-  } catch (error: any) {
-    logger.error('Signup error:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Signup error", err);
+    return { success: false, error: toAuthError(err, "Failed to sign up") };
   }
 }
 
 async function ensureUserProfile(userId: string, email: string, name?: string): Promise<void> {
-  try {
-    const { data, error } = await supabase.rpc('create_user_profile', {
-      p_user_id: userId,
-      p_email: email,
-      p_name: name || null,
-    });
-    if (error) {
-      logger.error('Error creating user profile:', error);
-      throw error;
-    }
-    logger.info('User profile result:', data);
-  } catch (error) {
-    logger.error('ensureUserProfile error:', error);
+  const { error } = await supabase.rpc("create_user_profile", {
+    p_user_id: userId,
+    p_email: email,
+    p_name: name || null,
+  });
+
+  if (error) {
+    // If your function returns "already exists", handle it server-side or detect it here.
     throw error;
   }
 }
@@ -120,22 +147,22 @@ export async function signIn(email: string, password: string): Promise<AuthRespo
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Sign in error", err);
+    return { success: false, error: toAuthError(err, "Failed to sign in") };
   }
 }
 
 // ==================== OAUTH AUTH ====================
 
 export async function isAppleSignInAvailable(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
-  return await AppleAuthentication.isAvailableAsync();
+  return Platform.OS === "ios" && (await AppleAuthentication.isAvailableAsync());
 }
 
 export async function signInWithApple(): Promise<AuthResponse> {
   try {
-    const isAvailable = await AppleAuthentication.isAvailableAsync();
-    if (!isAvailable) return signInWithOAuthWeb('apple');
+    const available = await AppleAuthentication.isAvailableAsync();
+    if (!available) return signInWithOAuthWeb("apple");
 
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
@@ -144,85 +171,94 @@ export async function signInWithApple(): Promise<AuthResponse> {
       ],
     });
 
-    if (!credential.identityToken) throw new Error('No identity token returned from Apple');
+    if (!credential.identityToken) {
+      return { success: false, error: "Apple Sign-In failed (no token)." };
+    }
 
     const { data, error } = await supabase.auth.signInWithIdToken({
-      provider: 'apple',
+      provider: "apple",
       token: credential.identityToken,
     });
 
     if (error) throw error;
-    if (!data.user) throw new Error('No user returned');
+    if (!data?.user) return { success: false, error: "No user returned" };
 
-    if (credential.fullName?.givenName || credential.fullName?.familyName) {
-      const name = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ');
-      if (name) await supabase.auth.updateUser({ data: { name } });
+    // Apple fullName/email may only be provided on first authorization
+    const given = credential.fullName?.givenName;
+    const family = credential.fullName?.familyName;
+    const fullName = [given, family].filter(Boolean).join(" ").trim();
+
+    if (fullName) {
+      const { error: updateError } = await supabase.auth.updateUser({ data: { name: fullName } });
+      if (updateError) {
+        // Non-fatal: don't block login
+        safeLogError("Apple name update error", updateError);
+      }
     }
+
     return { success: true };
-  } catch (error: any) {
-    if (error.code === 'ERR_REQUEST_CANCELED') return { success: false, error: 'Sign in was cancelled' };
-    logger.error('Apple Sign-In error:', error);
-    return { success: false, error: error.message };
+  } catch (err: any) {
+    // Expo AppleAuth cancellation codes can vary by version; keep it user-friendly.
+    const msg = err?.code === "ERR_REQUEST_CANCELED" ? "Sign in was cancelled" : toAuthError(err, "Apple Sign-In failed");
+    if (msg !== "Sign in was cancelled") safeLogError("Apple Sign-In error", err);
+    return { success: false, error: msg };
   }
 }
 
 export async function signInWithGoogle(): Promise<AuthResponse> {
-  return signInWithOAuthWeb('google');
+  return signInWithOAuthWeb("google");
 }
 
 export async function signInWithFacebook(): Promise<AuthResponse> {
-  return signInWithOAuthWeb('facebook');
+  return signInWithOAuthWeb("facebook");
 }
 
 export async function signInWithOAuth(provider: OAuthProvider): Promise<AuthResponse> {
-  if (provider === 'apple' && Platform.OS === 'ios') return signInWithApple();
+  if (provider === "apple" && Platform.OS === "ios") return signInWithApple();
   return signInWithOAuthWeb(provider);
 }
 
+/**
+ * PKCE-only OAuth web flow.
+ * - Avoid implicit flow token parsing (more fragile).
+ * - Requires Supabase to be configured for PKCE (default in supabase-js v2).
+ */
 async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse> {
   try {
-    const redirectUrl = 'memoryaisle://auth/callback';
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      options: {
+        redirectTo: REDIRECT_URL,
+        skipBrowserRedirect: true,
+      },
     });
 
     if (error) throw error;
-    if (!data.url) throw new Error('No OAuth URL returned');
+    if (!data?.url) return { success: false, error: "No OAuth URL returned" };
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+    const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL);
 
-    if (result.type === 'success' && result.url) {
+    if (result.type === "success" && result.url) {
       const url = new URL(result.url);
+      const code = new URLSearchParams(url.search).get("code");
 
-      // PKCE flow (Supabase JS v2 default): code is in query params
-      const code = new URLSearchParams(url.search).get('code');
-      if (code) {
-        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-        if (sessionError) throw sessionError;
-        return { success: true };
+      if (!code) {
+        // If you ever see this, your provider/Supabase settings may be misconfigured.
+        safeLogError("OAuth callback missing code", { message: "No code param", url: result.url });
+        return { success: false, error: "Sign in failed. Please try again." };
       }
 
-      // Implicit flow fallback: tokens in hash fragment
-      const hashParams = new URLSearchParams(url.hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const refreshToken = hashParams.get('refresh_token');
+      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+      if (sessionError) throw sessionError;
 
-      if (accessToken && refreshToken) {
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-        if (sessionError) throw sessionError;
-        return { success: true };
-      }
-
-      logger.error('OAuth: No code or tokens in callback URL', result.url);
+      return { success: true };
     }
-    return { success: false, error: result.type === 'cancel' ? 'Sign in was cancelled' : 'Sign in failed. Please try again.' };
-  } catch (error: any) {
-    logger.error('OAuth error:', error);
-    return { success: false, error: error.message };
+
+    if (result.type === "cancel") return { success: false, error: "Sign in was cancelled" };
+    return { success: false, error: "Sign in failed. Please try again." };
+  } catch (err) {
+    safeLogError("OAuth error", err);
+    return { success: false, error: toAuthError(err, "OAuth sign in failed") };
   }
 }
 
@@ -231,131 +267,254 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
 export async function resetPassword(email: string): Promise<AuthResponse> {
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'memoryaisle://auth/callback',
+      redirectTo: REDIRECT_URL,
     });
     if (error) throw error;
     return { success: true };
-  } catch (error: any) {
-    logger.error('Password reset error:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Password reset error", err);
+    return { success: false, error: toAuthError(err, "Failed to send reset email") };
   }
 }
 
 export async function signOut(): Promise<AuthResponse> {
   try {
+    // Best effort: close any auth browser
+    try {
+      await WebBrowser.dismissBrowser();
+    } catch {}
+
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+
     return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Sign out error", err);
+    return { success: false, error: toAuthError(err, "Failed to sign out") };
   }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr) throw authErr;
 
-    const { data, error } = await supabase.from('users').select('*').eq('id', user.id).single();
-    if (data) return data;
+    const authUser = authData?.user;
+    if (!authUser?.id) return null;
 
-    if (error?.code === 'PGRST116') {
-      await ensureUserProfile(user.id, user.email || '', user.user_metadata?.name);
-      const { data: retry } = await supabase.from('users').select('*').eq('id', user.id).single();
-      return retry;
+    const { data, error } = await supabase.from("users").select("*").eq("id", authUser.id).single();
+
+    if (data) return data as User;
+
+    // If not found, try creating profile once (idempotent RPC recommended)
+    if (error?.code === "PGRST116") {
+      await ensureUserProfile(authUser.id, authUser.email || "", authUser.user_metadata?.name);
+      const { data: retry } = await supabase.from("users").select("*").eq("id", authUser.id).single();
+      return (retry as User) ?? null;
     }
+
     if (error) throw error;
-    return data;
-  } catch (error) {
-    logger.error('Error getting current user:', error);
+    return null;
+  } catch (err) {
+    safeLogError("Error getting current user", err);
     return null;
   }
 }
 
 export async function getUserHousehold(user?: User | null): Promise<Household | null> {
   try {
-    const resolvedUser = user ?? await getCurrentUser();
-    if (!resolvedUser?.household_id) return null;
+    const resolved = user ?? (await getCurrentUser());
+    if (!resolved?.household_id) return null;
 
-    const { data, error } = await supabase.from('households').select('*').eq('id', resolvedUser.household_id).single();
+    const { data, error } = await supabase
+      .from("households")
+      .select("*")
+      .eq("id", resolved.household_id)
+      .single();
+
     if (error) throw error;
-    return data ? { ...data, familyProfile: data.family_profile ?? undefined } : null;
-  } catch (error) {
-    logger.error('Error getting household:', error);
+    if (!data) return null;
+
+    // Fetch actual family members
+    const { data: members } = await supabase
+      .from("family_members")
+      .select("id, name, role, allergies, dietary_preferences")
+      .eq("household_id", data.id);
+
+    return {
+      ...(data as any),
+      members: members || [],
+      familyProfile: (data as any).family_profile ?? undefined,
+    } as Household;
+  } catch (err) {
+    safeLogError("Error getting household", err);
     return null;
   }
 }
 
-export async function createHousehold(name: string, size?: number): Promise<{ household: Household | null; error?: string }> {
+/**
+ * SECURITY NOTE:
+ * These two should be server-side (RPC) to be atomic + enforce limits with RLS.
+ * The client multi-step approach is bypassable and race-prone.
+ */
+
+export async function createHousehold(
+  name: string,
+  size?: number
+): Promise<{ household: Household | null; error?: string }> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    // Prefer: supabase.rpc("create_household_and_link_user", { ... })
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id;
+    if (!userId) return { household: null, error: "Not authenticated" };
 
     const { data: household, error: householdError } = await supabase
-      .from('households')
-      .insert({ name, created_by: user.id, member_count: size })
-      .select().single();
+      .from("households")
+      .insert({ name, created_by: userId, member_count: size })
+      .select()
+      .single();
 
     if (householdError) throw householdError;
-    const { error: linkError } = await supabase.from('users').update({ household_id: household.id }).eq('id', user.id);
+
+    // Link user to household
+    const { error: linkError } = await supabase
+      .from("users")
+      .update({ household_id: household.id })
+      .eq("id", userId);
     if (linkError) throw linkError;
-    return { household };
-  } catch (error: any) {
-    return { household: null, error: error.message };
+
+    // Create initial grocery list (previously in DB trigger, now here)
+    const { error: listError } = await supabase
+      .from("grocery_lists")
+      .insert({ household_id: household.id, name: "Grocery List" });
+    if (listError) {
+      safeLogError("Failed to create initial grocery list", listError);
+      // Non-fatal — household still usable
+    }
+
+    return {
+      household: {
+        ...(household as any),
+        members: [],
+        familyProfile: (household as any).family_profile ?? undefined,
+      } as Household,
+    };
+  } catch (err) {
+    safeLogError("Create household error", err);
+    return { household: null, error: toAuthError(err, "Failed to create household") };
   }
 }
 
-export async function joinHousehold(inviteCode: string): Promise<{ household: Household | null; error?: string; needsPremium?: boolean }> {
+export async function joinHousehold(
+  inviteCode: string
+): Promise<{ household: Household | null; error?: string; needsPremium?: boolean }> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    // Prefer: supabase.rpc("join_household_by_invite", { p_invite_code })
+    // which checks capacity + joins atomically.
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id;
+    if (!userId) return { household: null, error: "Not authenticated" };
 
-    const { data: household, error: findError } = await supabase.from('households').select('*').eq('invite_code', inviteCode.toLowerCase()).single();
-    if (findError || !household) return { household: null, error: 'Invalid invite code' };
+    const code = inviteCode.trim().toLowerCase();
+    if (!code) return { household: null, error: "Invalid invite code" };
 
-    const { data: sub } = await supabase.from('subscriptions').select('tier, status').eq('user_id', household.created_by).single();
-    const isPremium = sub?.tier === 'premium' && sub?.status === 'active';
+    const { data: household, error: findError } = await supabase
+      .from("households")
+      .select("*")
+      .eq("invite_code", code)
+      .single();
+
+    if (findError || !household) return { household: null, error: "Invalid invite code" };
+
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("tier, status")
+      .eq("user_id", household.created_by)
+      .single();
+
+    const isPremium = sub?.tier === "premium" && sub?.status === "active";
     const limit = isPremium ? 7 : 1;
 
-    const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('household_id', household.id);
+    // Race-prone, client enforced:
+    const { count, error: countErr } = await supabase
+      .from("users")
+      .select("*", { count: "exact", head: true })
+      .eq("household_id", household.id);
+
+    if (countErr) throw countErr;
+
     if (count !== null && count >= limit) {
       return {
         household: null,
-        error: isPremium ? 'Household at max capacity (7).' : 'Free accounts limited to 1 member.',
-        needsPremium: !isPremium
+        error: isPremium ? "Household at max capacity (7)." : "Free accounts limited to 1 member.",
+        needsPremium: !isPremium,
       };
     }
 
-    const { error: linkError } = await supabase.from('users').update({ household_id: household.id }).eq('id', user.id);
+    const { error: linkError } = await supabase.from("users").update({ household_id: household.id }).eq("id", userId);
     if (linkError) throw linkError;
-    return { household };
-  } catch (error: any) {
-    return { household: null, error: error.message };
+
+    // Fetch existing family members so the store is properly initialized
+    const { data: members } = await supabase
+      .from("family_members")
+      .select("id, name, role, allergies, dietary_preferences")
+      .eq("household_id", household.id);
+
+    return {
+      household: {
+        ...(household as any),
+        members: members || [],
+        familyProfile: (household as any).family_profile ?? undefined,
+      } as Household,
+    };
+  } catch (err) {
+    safeLogError("Join household error", err);
+    return { household: null, error: toAuthError(err, "Failed to join household") };
   }
 }
 
 export async function linkPhoneNumber(phone: string): Promise<PhoneAuthResponse> {
   try {
-    const { error } = await supabase.auth.updateUser({ phone: formatPhoneNumber(phone) });
+    const formatted = formatPhoneNumberE164Loose(phone);
+    if (!formatted) return { success: false, error: "Invalid phone number" };
+
+    const { error } = await supabase.auth.updateUser({ phone: formatted });
     if (error) throw error;
+
     return { success: true, needsVerification: true };
-  } catch (error: any) {
-    logger.error('Link phone error:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Link phone error", err);
+    return { success: false, error: toAuthError(err, "Failed to link phone") };
   }
 }
 
 export async function verifyPhoneForAccount(phone: string, otp: string): Promise<AuthResponse> {
   try {
-    const formatted = formatPhoneNumber(phone);
-    const { data, error } = await supabase.auth.verifyOtp({ phone: formatted, token: otp, type: 'phone_change' });
-    if (error) throw error;
+    const formatted = formatPhoneNumberE164Loose(phone);
+    if (!formatted) return { success: false, error: "Invalid phone number" };
 
-    await supabase.from('users').update({ phone: formatted, phone_verified: true, phone_verified_at: new Date().toISOString() }).eq('id', data.user!.id);
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: formatted,
+      token: otp,
+      type: "phone_change",
+    });
+
+    if (error) throw error;
+    const userId = data?.user?.id;
+    if (!userId) return { success: false, error: "Verification failed" };
+
+    // Make sure RLS only allows user to update their own row.
+    const { error: updateErr } = await supabase
+      .from("users")
+      .update({ phone: formatted, phone_verified: true, phone_verified_at: new Date().toISOString() })
+      .eq("id", userId);
+
+    if (updateErr) throw updateErr;
+
     return { success: true };
-  } catch (error: any) {
-    logger.error('Phone verification error:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Phone verification error", err);
+    return { success: false, error: toAuthError(err, "Failed to verify phone") };
   }
 }
 
@@ -363,39 +522,49 @@ export async function resendPhoneLinkOTP(phone: string): Promise<AuthResponse> {
   return linkPhoneNumber(phone);
 }
 
-export async function saveDietaryPreferences(householdId: string, dietaryPreferences: string[], culturalPreferences: string[], familyProfile: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+export async function saveDietaryPreferences(
+  householdId: string,
+  dietaryPreferences: string[],
+  culturalPreferences: string[],
+  familyProfile: Record<string, any>
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase.from('households').update({ dietary_preferences: dietaryPreferences, cultural_preferences: culturalPreferences, family_profile: familyProfile }).eq('id', householdId);
+    // Security: Ensure RLS only allows household members to update this row.
+    const { error } = await supabase
+      .from("households")
+      .update({
+        dietary_preferences: dietaryPreferences,
+        cultural_preferences: culturalPreferences,
+        family_profile: familyProfile,
+      })
+      .eq("id", householdId);
+
     if (error) throw error;
     return { success: true };
-  } catch (error: any) {
-    logger.error('Error saving dietary preferences:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    safeLogError("Error saving dietary preferences", err);
+    return { success: false, error: toAuthError(err, "Failed to save preferences") };
   }
 }
 
-// 🪄 NEW GETTER RESTORED 🪄
 export async function loadDietaryPreferences(householdId: string) {
   try {
     const { data, error } = await supabase
-      .from('households')
-      .select('dietary_preferences, cultural_preferences, family_profile')
-      .eq('id', householdId)
+      .from("households")
+      .select("dietary_preferences, cultural_preferences, family_profile")
+      .eq("id", householdId)
       .single();
 
-    if (error) {
-      logger.error('Supabase error loading dietary preferences:', error);
-      return { success: false, data: null, error: error.message };
-    }
+    if (error) throw error;
     return { success: true, data };
-  } catch (err: any) {
-    logger.error('Unexpected error loading dietary preferences:', err);
-    return { success: false, data: null, error: err?.message };
+  } catch (err) {
+    safeLogError("Error loading dietary preferences", err);
+    return { success: false, data: null, error: toAuthError(err, "Failed to load preferences") };
   }
 }
 
 export function onAuthStateChange(callback: (user: any) => void) {
-  return supabase.auth.onAuthStateChange((event, session) => {
+  return supabase.auth.onAuthStateChange((_event, session) => {
     callback(session?.user ?? null);
   });
 }
