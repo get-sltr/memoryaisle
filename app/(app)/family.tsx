@@ -681,6 +681,7 @@ export default function FamilyScreen() {
               members.map((member) => (
                 <Pressable
                   key={member.id}
+                  style={styles.memberCardWrapper}
                   onLongPress={() => handleRemoveMember(member)}
                   delayLongPress={500}
                 >
@@ -997,12 +998,13 @@ function InputField({ label, placeholder, value, onChangeText, multiline }: Inpu
 
 // Member Card Component
 interface MemberCardProps {
-  member: { id: string; name: string; role?: string; profile?: any };
+  member: { id: string; name: string; role?: string; allergies?: string[]; profile?: any };
 }
 
 function MemberCard({ member }: MemberCardProps) {
   const roleInfo = ROLE_OPTIONS.find(r => r.id === member.role) || ROLE_OPTIONS[3];
-  const hasAllergies = member.profile?.allergies?.length > 0;
+  const allergies = member.allergies || member.profile?.allergies || [];
+  const hasAllergies = allergies.length > 0;
 
   return (
     <View style={styles.memberCard}>
@@ -1020,7 +1022,7 @@ function MemberCard({ member }: MemberCardProps) {
         {hasAllergies && (
           <View style={styles.allergyBadge}>
             <Text style={styles.allergyBadgeText}>
-              {member.profile.allergies.length} allergies
+              {allergies.length} allergies
             </Text>
           </View>
         )}
@@ -1158,8 +1160,10 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.xs,
   },
-  memberCard: {
+  memberCardWrapper: {
     width: '47%',
+  },
+  memberCard: {
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
   },
