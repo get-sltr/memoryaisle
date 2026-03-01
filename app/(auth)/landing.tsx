@@ -26,7 +26,7 @@ import {
   ANIMATION,
   HIG,
 } from '../../src/constants/theme';
-import { signInWithOAuth } from '../../src/services/auth';
+import { signInWithOAuth, getCurrentUser, getUserHousehold } from '../../src/services/auth';
 import { useAuthStore } from '../../src/stores/authStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -141,11 +141,22 @@ export default function LandingScreen() {
     try {
       const result = await signInWithOAuth(provider);
       if (result.success) {
-        // Don't navigate here — onAuthStateChange in _layout.tsx will load
-        // full user+household state, then the useEffect below redirects to /
-        // once isAuthenticated becomes true. Keep spinner showing.
-        // Safety timeout: if onAuthStateChange never fires, clear spinner after 10s
-        setTimeout(() => setIsLoading(null), 10000);
+        // Session is established. Load user+household directly rather than
+        // waiting for onAuthStateChange (which can be missed if the listener
+        // is recreated due to _layout.tsx effect dependency changes).
+        const { setUser, setHousehold, setLoading } = useAuthStore.getState();
+        setLoading(true);
+        try {
+          const user = await getCurrentUser();
+          setUser(user);
+          if (user) {
+            const household = await getUserHousehold(user);
+            setHousehold(household);
+          }
+        } finally {
+          setLoading(false);
+        }
+        router.replace('/');
         return;
       }
       if (result.error) {
@@ -154,7 +165,6 @@ export default function LandingScreen() {
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Something went wrong');
     }
-    // Only clear loading on error/cancel, not on success
     setIsLoading(null);
   };
 
