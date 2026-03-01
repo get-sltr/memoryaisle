@@ -156,7 +156,6 @@ export default function LandingScreen() {
         } finally {
           setLoading(false);
         }
-        setIsLoading(null);
         router.replace('/');
         return;
       }
@@ -165,8 +164,9 @@ export default function LandingScreen() {
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Something went wrong');
+    } finally {
+      setIsLoading(null);
     }
-    setIsLoading(null);
   };
 
   // Animation values
