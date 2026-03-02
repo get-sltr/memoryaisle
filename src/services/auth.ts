@@ -4,6 +4,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
 import type { User, Household } from "../types";
 import { logger } from "../utils/logger";
+import { oauthState } from "./oauthState";
 
 // If you keep this here, be aware it's a module import side-effect.
 // Alternatively call it once in your app bootstrap.
@@ -224,6 +225,7 @@ export async function signInWithOAuth(provider: OAuthProvider): Promise<AuthResp
  * - Requires Supabase to be configured for PKCE (default in supabase-js v2).
  */
 async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse> {
+  oauthState.start();
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -239,7 +241,7 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
     // Race the browser session against a safety timeout.
     // On some iOS devices, openAuthSessionAsync can hang if the deep link
     // is intercepted by Expo Router instead of ASWebAuthenticationSession.
-    const BROWSER_TIMEOUT_MS = 90_000;
+    const BROWSER_TIMEOUT_MS = 15_000;
     const result = await Promise.race([
       WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL),
       new Promise<{ type: "timeout" }>((resolve) =>
@@ -259,21 +261,33 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
       }
     }
 
-    // Fallback: check if a session was established by any means
-    // (callback.tsx deep link, or a previous exchange)
-    const { data: session } = await supabase.auth.getSession();
-    if (session?.session) return { success: true };
-
-    return { success: false, error: "Sign in failed. Please try again." };
+    // Poll for session — callback.tsx may be exchanging the code concurrently.
+    // SecureStore writes are async, so a single getSession() can miss it.
+    return await pollForSession();
   } catch (err) {
     // Even on error, a session may have been established via callback.tsx
     try {
-      const { data: session } = await supabase.auth.getSession();
-      if (session?.session) return { success: true };
+      return await pollForSession();
     } catch {}
     safeLogError("OAuth error", err);
     return { success: false, error: toAuthError(err, "OAuth sign in failed") };
+  } finally {
+    oauthState.end();
   }
+}
+
+/**
+ * Poll for an established session with short retries.
+ * Handles the race where callback.tsx exchanged the code but
+ * SecureStore hasn't finished writing when we first check.
+ */
+async function pollForSession(): Promise<AuthResponse> {
+  for (let i = 0; i < 8; i++) {
+    const { data: session } = await supabase.auth.getSession();
+    if (session?.session) return { success: true };
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { success: false, error: "Sign in failed. Please try again." };
 }
 
 // ==================== HELPERS ====================

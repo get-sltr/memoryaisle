@@ -16,6 +16,9 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../../src/services/supabase';
 import { logger } from '../../../src/utils/logger';
+import { oauthState } from '../../../src/services/oauthState';
+import { getCurrentUser, getUserHousehold } from '../../../src/services/auth';
+import { useAuthStore } from '../../../src/stores/authStore';
 import {
   COLORS,
   FONT_SIZES,
@@ -100,6 +103,28 @@ export default function AuthCallbackScreen() {
               return;
             }
           }
+
+          // If landing.tsx started the OAuth flow, let it handle navigation.
+          // We just exchanged the code — signInWithOAuthWeb will poll and find the session.
+          if (oauthState.isInProgress()) {
+            logger.info('OAuth callback: code exchanged, deferring to landing page');
+            return;
+          }
+
+          // Cold-start deep link: load user+household before navigating
+          // (onAuthStateChange might not fire reliably on cold start)
+          try {
+            const { setUser, setHousehold } = useAuthStore.getState();
+            const user = await getCurrentUser();
+            setUser(user);
+            if (user) {
+              const household = await getUserHousehold(user);
+              setHousehold(household);
+            }
+          } catch (e) {
+            logger.error('OAuth callback: failed to load user', { message: (e as any)?.message });
+          }
+
           router.replace('/');
           return;
         }
