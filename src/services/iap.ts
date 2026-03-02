@@ -42,7 +42,7 @@ const ErrorCode = iapModule?.ErrorCode ?? {};
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export const IAP_PRODUCTS = {
-  PREMIUM_MONTHLY: "com.memoryaisle.premium.monthly001",
+  PREMIUM_MONTHLY: "com.memoryaisle.premium.monthly002",
 } as const;
 
 const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_MONTHLY];
@@ -50,6 +50,7 @@ const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_MONTHLY];
 // All product IDs we've ever shipped — needed for restore to find old purchases
 const ALL_PREMIUM_PRODUCT_IDS = [
   IAP_PRODUCTS.PREMIUM_MONTHLY,
+  "com.memoryaisle.premium.monthly001",
   "com.memoryaisle.premium.yearly001",
   "com.memoryaisle.premium.yearly",
 ];
