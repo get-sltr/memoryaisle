@@ -252,8 +252,26 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
 
     if (result.type === "cancel") return { success: false };
 
-    // Don't exchange the code here — callback.tsx is the single exchanger.
-    // Poll for the session it establishes.
+    // On iOS, ASWebAuthenticationSession captures the redirect URL exclusively —
+    // it does NOT forward the deep link to Expo Router, so callback.tsx never fires.
+    // Extract the code from the result URL and exchange it here.
+    if (result.type === "success" && (result as any).url) {
+      try {
+        const returnUrl = new URL((result as any).url);
+        const code = returnUrl.searchParams.get("code");
+        if (code && oauthState.tryExchange()) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (!exchangeError) {
+            return { success: true };
+          }
+          logger.error("PKCE exchange failed", { message: exchangeError.message });
+        }
+      } catch (parseErr) {
+        logger.warn("Failed to parse OAuth return URL");
+      }
+    }
+
+    // Fallback: poll in case callback.tsx handled it (e.g. Android)
     return await pollForSession();
   } catch (err) {
     // Even on error, a session may have been established via callback.tsx
