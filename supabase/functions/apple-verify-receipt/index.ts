@@ -201,17 +201,29 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (currentSub?.last_updated_source === 'apple_notification') {
-      // Server notification already processed — skip client overwrite
-      // but ensure the user has premium access (the notification already set it)
-      console.log(JSON.stringify({
-        event: 'client_verify_skipped_server_notification_exists',
-        user_id: user.id,
-      }));
-      return new Response(
-        JSON.stringify({ success: true, source: 'server_notification' }),
-        { status: 200, headers: jsonHeaders },
-      );
+    if (
+      currentSub?.last_updated_source === 'apple_notification' &&
+      currentSub?.updated_at
+    ) {
+      // Server notification exists — only skip if the subscription is currently active.
+      // If expired/canceled, allow client to re-activate (user re-subscribed).
+      const { data: subStatus } = await serviceClient
+        .from('subscriptions')
+        .select('status')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (subStatus?.status === 'active' || subStatus?.status === 'trialing') {
+        console.log(JSON.stringify({
+          event: 'client_verify_skipped_server_notification_active',
+          user_id: user.id,
+        }));
+        return new Response(
+          JSON.stringify({ success: true, source: 'server_notification' }),
+          { status: 200, headers: jsonHeaders },
+        );
+      }
+      // Subscription is expired/canceled — allow client to re-activate below
     }
 
     const { error: upsertError } = await serviceClient

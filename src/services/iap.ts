@@ -47,6 +47,12 @@ export const IAP_PRODUCTS = {
 
 const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_YEARLY];
 
+// All product IDs we've ever shipped — needed for restore to find old purchases
+const ALL_PREMIUM_PRODUCT_IDS = [
+  IAP_PRODUCTS.PREMIUM_YEARLY,
+  "com.memoryaisle.premium.yearly",
+];
+
 export const SUBSCRIPTION_TIERS = {
   free: {
     id: "free",
@@ -165,11 +171,15 @@ function extractPurchaseFields(purchase: Purchase) {
       purchase.originalTransactionIdIOS ??
       purchase.transactionId ??
       null,
-    // StoreKit 2 expiration — millisecond timestamp or ISO string
+    // StoreKit 2 expiration — try known field names from react-native-iap
     expiresDate:
-      purchase.transactionDate
-        ? undefined // transactionDate is purchase time, not expiry
-        : undefined,
+      purchase.expirationDateIOS ??
+      purchase.expiresDateIOS ??
+      purchase.expirationDate ??
+      // Fallback: if no expiry field, estimate 1 year from purchase date
+      (purchase.transactionDate
+        ? new Date(Number(purchase.transactionDate) + 365 * 24 * 60 * 60 * 1000).toISOString()
+        : undefined),
     // react-native-iap may expose these on newer versions
     environment:
       purchase.environment ??
@@ -430,7 +440,7 @@ class IAPService {
       const purchases = await getAvailablePurchases();
       if (!purchases?.length) return false;
 
-      const subPurchase = purchases.find((p: any) => p.productId === IAP_PRODUCTS.PREMIUM_YEARLY);
+      const subPurchase = purchases.find((p: any) => ALL_PREMIUM_PRODUCT_IDS.includes(p.productId));
       if (!subPurchase) {
         // still finish any dangling transactions
         for (const p of purchases) await safeFinishTransaction(p);

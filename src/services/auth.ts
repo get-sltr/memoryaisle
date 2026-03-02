@@ -239,30 +239,21 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
     if (!data?.url) return { success: false, error: "No OAuth URL returned" };
 
     // Race the browser session against a safety timeout.
-    // On some iOS devices, openAuthSessionAsync can hang if the deep link
-    // is intercepted by Expo Router instead of ASWebAuthenticationSession.
-    const BROWSER_TIMEOUT_MS = 15_000;
+    // 60s allows for 2FA / slow typing but doesn't hang forever.
+    const BROWSER_TIMEOUT_MS = 60_000;
+    let timeoutId: ReturnType<typeof setTimeout>;
     const result = await Promise.race([
       WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL),
-      new Promise<{ type: "timeout" }>((resolve) =>
-        setTimeout(() => resolve({ type: "timeout" }), BROWSER_TIMEOUT_MS)
-      ),
+      new Promise<{ type: "timeout" }>((resolve) => {
+        timeoutId = setTimeout(() => resolve({ type: "timeout" }), BROWSER_TIMEOUT_MS);
+      }),
     ]);
+    clearTimeout(timeoutId!);
 
     if (result.type === "cancel") return { success: false };
 
-    // Try to exchange the code if the browser returned one
-    if (result.type === "success" && "url" in result && result.url) {
-      const code = new URLSearchParams(new URL(result.url).search).get("code");
-      if (code) {
-        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-        if (!sessionError) return { success: true };
-        // Code may have already been exchanged by callback.tsx — fall through
-      }
-    }
-
-    // Poll for session — callback.tsx may be exchanging the code concurrently.
-    // SecureStore writes are async, so a single getSession() can miss it.
+    // Don't exchange the code here — callback.tsx is the single exchanger.
+    // Poll for the session it establishes.
     return await pollForSession();
   } catch (err) {
     // Even on error, a session may have been established via callback.tsx
@@ -278,14 +269,14 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
 
 /**
  * Poll for an established session with short retries.
- * Handles the race where callback.tsx exchanged the code but
- * SecureStore hasn't finished writing when we first check.
+ * callback.tsx is the single exchanger; this waits for the session
+ * to appear in SecureStore after exchange completes.
  */
 async function pollForSession(): Promise<AuthResponse> {
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     const { data: session } = await supabase.auth.getSession();
     if (session?.session) return { success: true };
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 600));
   }
   return { success: false, error: "Sign in failed. Please try again." };
 }

@@ -125,7 +125,12 @@ export default function VerifyOTP() {
     }
   };
 
+  const verifyingRef = useRef(false);
+
   const handleVerify = async (code?: string) => {
+    // Guard against concurrent calls from auto-submit + button tap
+    if (verifyingRef.current) return;
+
     const otpCode = code || otp.join('');
 
     if (otpCode.length !== OTP_LENGTH) {
@@ -138,6 +143,7 @@ export default function VerifyOTP() {
       return;
     }
 
+    verifyingRef.current = true;
     setLoading(true);
     try {
       const { success, error } = await verifyPhoneOTP(phone, otpCode);
@@ -152,6 +158,7 @@ export default function VerifyOTP() {
       Alert.alert('Verification failed', e?.message ?? 'Unknown error');
     } finally {
       setLoading(false);
+      verifyingRef.current = false;
     }
   };
 

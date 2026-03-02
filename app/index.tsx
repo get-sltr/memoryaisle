@@ -4,12 +4,15 @@
 import { Redirect } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuthStore } from '../src/stores/authStore';
+import { oauthState } from '../src/services/oauthState';
 
 export default function RootIndex() {
   const { user, household, isLoading, isGuest } = useAuthStore();
 
-  // Still bootstrapping — show loading (splash screen handles visual)
-  if (isLoading) {
+  // Still bootstrapping or mid-OAuth — don't redirect yet.
+  // oauthState.isInProgress() prevents bouncing to landing while
+  // callback.tsx is exchanging the code and the session isn't written yet.
+  if (isLoading || oauthState.isInProgress()) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color="#D4AF37" />

@@ -31,25 +31,39 @@ export default function AuthCallbackScreen() {
   const params = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
 
-  const [mode, setMode] = useState<'loading' | 'recovery' | 'oauth'>('loading');
+  const [mode, setMode] = useState<'loading' | 'recovery'>('loading');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Extract stable primitive values from params to avoid useEffect re-runs
+  // (useLocalSearchParams/useGlobalSearchParams return new object refs each render)
+  const paramCode = (params.code || globalParams.code || '') as string;
+  const paramType = (params.type || globalParams.type || '') as string;
+  const paramAccessToken = (params.access_token || globalParams.access_token || '') as string;
+  const paramRefreshToken = (params.refresh_token || globalParams.refresh_token || '') as string;
+
   useEffect(() => {
     let isMounted = true;
+
+    // Safety timeout — if we're stuck loading for 10s, bail to sign-in
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted && mode === 'loading') {
+        logger.warn('Auth callback safety timeout — redirecting to sign-in');
+        router.replace('/(auth)/sign-in');
+      }
+    }, 10_000);
 
     const handleUrl = async (url: string | null) => {
       if (!isMounted) return;
 
       try {
-        // 1. Default to Router params if Expo caught the link first
-        let accessToken: string | string[] | null = params.access_token || globalParams.access_token || null;
-        let refreshToken: string | string[] | null = params.refresh_token || globalParams.refresh_token || null;
-        let type: string | string[] | null = params.type || globalParams.type || null;
+        // 1. Parse params from URL if router didn't catch them
+        let type = paramType || null;
+        let accessToken = paramAccessToken || null;
+        let refreshToken = paramRefreshToken || null;
 
-        // 2. If no Router params, safely parse the raw URL
         if (url && (!accessToken || !refreshToken)) {
           try {
             const urlObj = new URL(url);
@@ -64,11 +78,12 @@ export default function AuthCallbackScreen() {
           }
         }
 
-        // 3. Password recovery flow
+        // 2. Password recovery flow (requires tokens — this is the only
+        //    legitimate use of access_token/refresh_token via deep link)
         if (type === 'recovery' && accessToken && refreshToken) {
           const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken as string,
-            refresh_token: refreshToken as string,
+            access_token: accessToken,
+            refresh_token: refreshToken,
           });
 
           if (sessionError) {
@@ -82,8 +97,9 @@ export default function AuthCallbackScreen() {
           return;
         }
 
-        // 4. PKCE OAuth flow (code in query params)
-        let code: string | string[] | null = params.code || globalParams.code || null;
+        // 3. PKCE OAuth flow — this is the ONLY place that exchanges codes.
+        //    Exchange lock prevents double exchange from useEffect re-runs.
+        let code: string | null = paramCode || null;
         if (!code && url) {
           try {
             const urlObj = new URL(url);
@@ -92,27 +108,39 @@ export default function AuthCallbackScreen() {
         }
 
         if (code) {
-          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code as string);
+          // Acquire exchange lock — only the first caller exchanges
+          if (!oauthState.tryExchange()) {
+            // Already exchanged — just check if we should navigate
+            if (!oauthState.isInProgress()) {
+              const { data: session } = await supabase.auth.getSession();
+              if (session?.session) {
+                router.replace('/');
+              } else {
+                router.replace('/(auth)/sign-in');
+              }
+            }
+            return;
+          }
+
+          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
           if (sessionError) {
-            // Code may have already been exchanged by signInWithOAuthWeb —
-            // check if a session exists before treating as a real error
+            // Check if session exists anyway (rare edge case)
             const { data: existingSession } = await supabase.auth.getSession();
             if (!existingSession?.session) {
-              logger.error('PKCE code exchange failed in callback', sessionError);
+              logger.error('PKCE code exchange failed', sessionError);
               router.replace('/(auth)/sign-in');
               return;
             }
           }
 
           // If landing.tsx started the OAuth flow, let it handle navigation.
-          // We just exchanged the code — signInWithOAuthWeb will poll and find the session.
+          // signInWithOAuthWeb will poll and find the session we just established.
           if (oauthState.isInProgress()) {
-            logger.info('OAuth callback: code exchanged, deferring to landing page');
             return;
           }
 
           // Cold-start deep link: load user+household before navigating
-          // (onAuthStateChange might not fire reliably on cold start)
+          // so app/index.tsx doesn't see !user and bounce to landing
           try {
             const { setUser, setHousehold } = useAuthStore.getState();
             const user = await getCurrentUser();
@@ -122,30 +150,15 @@ export default function AuthCallbackScreen() {
               setHousehold(household);
             }
           } catch (e) {
-            logger.error('OAuth callback: failed to load user', { message: (e as any)?.message });
+            logger.error('Auth callback: failed to load user', { message: (e as any)?.message });
           }
 
           router.replace('/');
           return;
         }
 
-        // 5. Implicit OAuth flow (tokens in hash/params)
-        if (accessToken && refreshToken) {
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken as string,
-            refresh_token: refreshToken as string,
-          });
-
-          if (sessionError) {
-            router.replace('/(auth)/sign-in');
-            return;
-          }
-
-          router.replace('/');
-          return;
-        }
-
-        // If no valid tokens or code found, bounce to login
+        // 4. No valid code or recovery tokens — bounce to login
+        // (Implicit flow tokens are NOT accepted — PKCE only)
         router.replace('/(auth)/sign-in');
       } catch (err) {
         logger.error('Auth callback error', err);
@@ -163,9 +176,10 @@ export default function AuthCallbackScreen() {
 
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimeout);
       subscription.remove();
     };
-  }, [params, globalParams]); // Re-run if router catches params late
+  }, [paramCode, paramType, paramAccessToken, paramRefreshToken]);
 
   const handleResetPassword = async () => {
     setError('');
@@ -209,7 +223,7 @@ export default function AuthCallbackScreen() {
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
-      if (isSubmitting) setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 

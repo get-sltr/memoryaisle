@@ -25,8 +25,10 @@ import {
 
 const PREMIUM_YEARLY_PRODUCT_IDS = ['com.memoryaisle.premium.yearly001', 'com.memoryaisle.premium.yearly'];
 
-// Maximum age for a notification's signedDate before we reject it as a replay (5 minutes)
-const MAX_NOTIFICATION_AGE_MS = 5 * 60 * 1000;
+// Maximum age for a notification's signedDate before we reject it as stale.
+// Apple retries over 24h, so we accept up to 48h to avoid missing legitimate retries.
+// The idempotency check (notification UUID) prevents true duplicates.
+const MAX_NOTIFICATION_AGE_MS = 48 * 60 * 60 * 1000;
 
 serve(async (req) => {
   // Apple sends POST only

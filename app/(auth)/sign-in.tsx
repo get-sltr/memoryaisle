@@ -67,6 +67,7 @@ export default function SignIn() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | 'apple' | null>(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -99,11 +100,19 @@ export default function SignIn() {
       Alert.alert('Enter Email', 'Please enter your email address first, then tap Forgot Password.');
       return;
     }
-    const { success, error } = await resetPassword(email);
-    if (success) {
-      Alert.alert('Check Your Email', 'If an account exists with that email, we sent a password reset link.');
-    } else {
-      Alert.alert('Error', error || 'Failed to send reset email');
+    if (forgotLoading) return;
+    setForgotLoading(true);
+    try {
+      const { success, error } = await resetPassword(email);
+      if (success) {
+        Alert.alert('Check Your Email', 'If an account exists with that email, we sent a password reset link.');
+      } else {
+        Alert.alert('Error', error || 'Failed to send reset email');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', 'Failed to send reset email. Please try again.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -216,8 +225,10 @@ export default function SignIn() {
               </View>
 
               {/* Forgot Password */}
-              <Pressable onPress={handleForgotPassword}>
-                <Text style={styles.forgotPassword}>Forgot Password?</Text>
+              <Pressable onPress={handleForgotPassword} disabled={forgotLoading}>
+                <Text style={styles.forgotPassword}>
+                  {forgotLoading ? 'Sending...' : 'Forgot Password?'}
+                </Text>
               </Pressable>
 
               {/* Sign In Button */}
