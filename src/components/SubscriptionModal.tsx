@@ -226,7 +226,7 @@ export function SubscriptionModal({
             </Pressable>
 
             <Text style={styles.termsText}>
-              Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/month unless canceled at least 24 hours before the end of the current monthly period.{'\n\n'}
+              After your 7-day free trial, you'll be charged {displayPrice}/month. Cancel anytime in Settings. Subscription auto-renews unless canceled at least 24 hours before the end of the current period.{'\n\n'}
               <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/terms')}>Terms of Use</Text>
               {'  •  '}
               <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}>Privacy Policy</Text>

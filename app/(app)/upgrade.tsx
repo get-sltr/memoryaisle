@@ -256,7 +256,7 @@ export default function UpgradePage() {
             .
           </Text>
           <Text style={styles.cancelText}>
-            Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/month unless canceled at least 24 hours before the end of the current monthly period. Manage subscriptions in your Apple ID account settings.
+            After your 7-day free trial, you'll be charged {displayPrice}/month. Cancel anytime in Settings. Subscription auto-renews unless canceled at least 24 hours before the end of the current period. Payment will be charged to your Apple ID account. Manage or cancel in your Apple ID account settings.
           </Text>
         </View>
       </ScrollView>
