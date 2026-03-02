@@ -74,7 +74,7 @@ export function useSubscription() {
     [subscription]
   );
 
-  const purchaseYearly = useCallback(async (): Promise<PurchaseResult> => {
+  const purchaseMonthly = useCallback(async (): Promise<PurchaseResult> => {
     if (!user?.id) return { status: 'error', message: 'Please sign in.' };
     return iapService.purchaseSubscription();
   }, [user?.id]);
@@ -98,7 +98,7 @@ export function useSubscription() {
     canAccess,
     getLimit,
     refresh,
-    purchaseYearly,
+    purchaseMonthly,
     restorePurchases,
   };
 }

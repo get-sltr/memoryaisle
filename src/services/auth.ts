@@ -1,3 +1,40 @@
+/**
+ * auth.ts — rewritten with explicit code audit notes embedded.
+ *
+ * GOAL: Fix “stuck on Signing in…” and make OAuth reliable on iOS + Android.
+ *
+ * KEY FINDINGS (what was breaking):
+ * 1) iOS WebBrowser.openAuthSessionAsync uses ASWebAuthenticationSession.
+ *    It usually CAPTURES the deep link and returns it via `result.url`,
+ *    meaning Expo Router callback route often DOES NOT fire.
+ *
+ * 2) Your exchange was wrong for PKCE:
+ *    You called `exchangeCodeForSession(code)` with only the raw `code`.
+ *    In Supabase JS v2 PKCE flows, you should pass the *full callback URL*
+ *    (the one containing `?code=...`) so the library can complete the PKCE exchange.
+ *
+ * 3) You returned `{ success: true }` immediately after exchange without ensuring
+ *    the session was actually persisted/available yet. SecureStore writes can lag,
+ *    causing UI/auth-guard to still see “no session” and get stuck / bounce.
+ *
+ * 4) Timeout wasn’t handled explicitly, so timeouts fell into the “poll” path,
+ *    often leaving UI in an ambiguous loading state with generic error.
+ *
+ * FIX STRATEGY:
+ * - Keep PKCE-only (no implicit token parsing).
+ * - On iOS: exchange inside `signInWithOAuthWeb()` using `result.url`.
+ * - Keep polling as a fallback and to bridge storage timing.
+ * - Make errors deterministic and logs safe.
+ *
+ * NOTE:
+ * - This file assumes `oauthState` has:
+ *   - start(): marks flow started
+ *   - end(): marks flow ended AND resets any exchange lock
+ *   - tryExchange(): returns true only once per flow (mutex)
+ *   If `oauthState.end()` does NOT reset the exchange lock, you can get “stuck forever”
+ *   on future attempts. Make sure it resets.
+ */
+
 import { supabase } from "./supabase";
 import * as WebBrowser from "expo-web-browser";
 import * as AppleAuthentication from "expo-apple-authentication";
@@ -7,7 +44,7 @@ import { logger } from "../utils/logger";
 import { oauthState } from "./oauthState";
 
 // If you keep this here, be aware it's a module import side-effect.
-// Alternatively call it once in your app bootstrap.
+// Best practice: call once in app bootstrap (App.tsx / root layout).
 WebBrowser.maybeCompleteAuthSession();
 
 export interface AuthResponse {
@@ -22,13 +59,23 @@ export interface PhoneAuthResponse extends AuthResponse {
 export type OAuthProvider = "google" | "facebook" | "apple";
 
 /**
- * Single source of truth for redirect URL.
+ * Single source of truth for OAuth redirect.
  * Must match:
  * - Expo scheme config (app.json/app.config)
  * - iOS URL Types
  * - Supabase Auth redirect allowlist
+ *
+ * IMPORTANT:
+ * If you use Expo dev/preview URLs (exp://...), you may want to generate this
+ * dynamically with Linking.createURL(...). Hardcoding works for production builds.
  */
 const REDIRECT_URL = "memoryaisle://auth/callback";
+
+/**
+ * Password reset redirects to the same callback route, which already handles
+ * type=recovery with access_token and refresh_token params.
+ */
+const PASSWORD_RESET_REDIRECT_URL = "memoryaisle://auth/callback";
 
 /**
  * Avoid logging raw error objects (can include PII / tokens).
@@ -56,12 +103,11 @@ function safeLogError(context: string, err: unknown) {
 
 function formatPhoneNumberE164Loose(phone: string): string {
   // Best practice: use libphonenumber-js to format/validate E.164.
-  // This is a "loose" fallback; consider replacing with a real formatter.
+  // This is a "loose" fallback.
   let cleaned = phone.trim().replace(/[^\d+]/g, "");
   if (!cleaned) return "";
 
   if (!cleaned.startsWith("+")) {
-    // Default to US if 10 digits; otherwise just prefix '+'.
     if (cleaned.length === 10) cleaned = `+1${cleaned}`;
     else cleaned = `+${cleaned}`;
   }
@@ -123,6 +169,7 @@ export async function signUp(email: string, password: string, name: string): Pro
 
     // Make sure your RPC is idempotent (insert-if-not-exists).
     await ensureUserProfile(data.user.id, email, name);
+
     return { success: true };
   } catch (err) {
     safeLogError("Signup error", err);
@@ -192,15 +239,17 @@ export async function signInWithApple(): Promise<AuthResponse> {
     if (fullName) {
       const { error: updateError } = await supabase.auth.updateUser({ data: { name: fullName } });
       if (updateError) {
-        // Non-fatal: don't block login
+        // Non-fatal
         safeLogError("Apple name update error", updateError);
       }
     }
 
     return { success: true };
   } catch (err: any) {
-    // Expo AppleAuth cancellation codes can vary by version; keep it user-friendly.
-    const msg = err?.code === "ERR_REQUEST_CANCELED" ? "Sign in was cancelled" : toAuthError(err, "Apple Sign-In failed");
+    const msg =
+      err?.code === "ERR_REQUEST_CANCELED"
+        ? "Sign in was cancelled"
+        : toAuthError(err, "Apple Sign-In failed");
     if (msg !== "Sign in was cancelled") safeLogError("Apple Sign-In error", err);
     return { success: false, error: msg };
   }
@@ -221,11 +270,16 @@ export async function signInWithOAuth(provider: OAuthProvider): Promise<AuthResp
 
 /**
  * PKCE-only OAuth web flow.
- * - Avoid implicit flow token parsing (more fragile).
- * - Requires Supabase to be configured for PKCE (default in supabase-js v2).
+ *
+ * IMPORTANT PLATFORM NOTE:
+ * On iOS, WebBrowser.openAuthSessionAsync() uses ASWebAuthenticationSession which
+ * often captures the redirect URL and returns it in `result.url` WITHOUT forwarding
+ * the deep link to your app’s URL handler. That means your Expo Router callback route
+ * may NOT run. Therefore: exchange must happen here on iOS using result.url.
  */
 async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse> {
   oauthState.start();
+
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -238,62 +292,90 @@ async function signInWithOAuthWeb(provider: OAuthProvider): Promise<AuthResponse
     if (error) throw error;
     if (!data?.url) return { success: false, error: "No OAuth URL returned" };
 
-    // Race the browser session against a safety timeout.
-    // 60s allows for 2FA / slow typing but doesn't hang forever.
     const BROWSER_TIMEOUT_MS = 60_000;
-    let timeoutId: ReturnType<typeof setTimeout>;
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    // Race browser session against timeout, but be careful to ALWAYS clear the timer.
     const result = await Promise.race([
       WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL),
       new Promise<{ type: "timeout" }>((resolve) => {
         timeoutId = setTimeout(() => resolve({ type: "timeout" }), BROWSER_TIMEOUT_MS);
       }),
     ]);
-    clearTimeout(timeoutId!);
 
-    if (result.type === "cancel") return { success: false };
+    if (timeoutId) clearTimeout(timeoutId);
 
-    // On iOS, ASWebAuthenticationSession captures the redirect URL exclusively —
-    // it does NOT forward the deep link to Expo Router, so callback.tsx never fires.
-    // Extract the code from the result URL and exchange it here.
-    if (result.type === "success" && (result as any).url) {
-      try {
-        const returnUrl = new URL((result as any).url);
-        const code = returnUrl.searchParams.get("code");
-        if (code && oauthState.tryExchange()) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (!exchangeError) {
-            return { success: true };
-          }
+    // Normalize result typing
+    const type = (result as any)?.type as string | undefined;
+
+    if (type === "timeout") {
+      // Explicit message prevents “mysterious stuck spinner”
+      return { success: false, error: "Sign in timed out. Please try again." };
+    }
+
+    if (type === "cancel" || type === "dismiss") {
+      // Some environments return "dismiss"
+      return { success: false };
+    }
+
+    /**
+     * CRITICAL FIX:
+     * If we received a success URL from openAuthSessionAsync, exchange PKCE here.
+     *
+     * DO NOT pass just `code` into exchangeCodeForSession.
+     * Pass the FULL callback URL containing `?code=...`.
+     */
+    const returnedUrl = (result as any)?.url as string | undefined;
+    if (type === "success" && returnedUrl) {
+      if (oauthState.tryExchange()) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(returnedUrl);
+
+        if (exchangeError) {
+          // If Android/callback already exchanged, you may see “already used”.
+          // We treat that as non-fatal and fall through to poll.
           logger.error("PKCE exchange failed", { message: exchangeError.message });
+        } else {
+          // Don’t return immediately; wait for session to be present.
+          return await pollForSession();
         }
-      } catch (parseErr) {
-        logger.warn("Failed to parse OAuth return URL");
       }
     }
 
-    // Fallback: poll in case callback.tsx handled it (e.g. Android)
+    /**
+     * FALLBACK:
+     * If another path handled the exchange (Android deep link, router callback, etc.),
+     * session may appear shortly. Poll briefly.
+     */
     return await pollForSession();
   } catch (err) {
-    // Even on error, a session may have been established via callback.tsx
+    /**
+     * Even on error, a session could have been established by another path.
+     * Poll first, then report error.
+     */
     try {
-      return await pollForSession();
-    } catch {}
+      const maybe = await pollForSession();
+      if (maybe.success) return maybe;
+    } catch {
+      // ignore
+    }
+
     safeLogError("OAuth error", err);
     return { success: false, error: toAuthError(err, "OAuth sign in failed") };
   } finally {
+    // MUST reset flow + exchange lock. If end() doesn't reset lock, future attempts may break.
     oauthState.end();
   }
 }
 
 /**
  * Poll for an established session with short retries.
- * callback.tsx is the single exchanger; this waits for the session
- * to appear in SecureStore after exchange completes.
+ * This is mainly to bridge the SecureStore write timing after exchange.
  */
 async function pollForSession(): Promise<AuthResponse> {
   for (let i = 0; i < 10; i++) {
-    const { data: session } = await supabase.auth.getSession();
-    if (session?.session) return { success: true };
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) return { success: true };
     await new Promise((r) => setTimeout(r, 600));
   }
   return { success: false, error: "Sign in failed. Please try again." };
@@ -304,7 +386,7 @@ async function pollForSession(): Promise<AuthResponse> {
 export async function resetPassword(email: string): Promise<AuthResponse> {
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: REDIRECT_URL,
+      redirectTo: PASSWORD_RESET_REDIRECT_URL,
     });
     if (error) throw error;
     return { success: true };
@@ -319,7 +401,9 @@ export async function signOut(): Promise<AuthResponse> {
     // Best effort: close any auth browser
     try {
       await WebBrowser.dismissBrowser();
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
@@ -363,16 +447,10 @@ export async function getUserHousehold(user?: User | null): Promise<Household | 
     const resolved = user ?? (await getCurrentUser());
     if (!resolved?.household_id) return null;
 
-    const { data, error } = await supabase
-      .from("households")
-      .select("*")
-      .eq("id", resolved.household_id)
-      .single();
-
+    const { data, error } = await supabase.from("households").select("*").eq("id", resolved.household_id).single();
     if (error) throw error;
     if (!data) return null;
 
-    // Fetch actual family members
     const { data: members } = await supabase
       .from("family_members")
       .select("id, name, role, allergies, dietary_preferences")
@@ -391,16 +469,14 @@ export async function getUserHousehold(user?: User | null): Promise<Household | 
 
 /**
  * SECURITY NOTE:
- * These two should be server-side (RPC) to be atomic + enforce limits with RLS.
+ * These should ideally be server-side (RPC) to be atomic + enforce limits with RLS.
  * The client multi-step approach is bypassable and race-prone.
  */
-
 export async function createHousehold(
   name: string,
   size?: number
 ): Promise<{ household: Household | null; error?: string }> {
   try {
-    // Prefer: supabase.rpc("create_household_and_link_user", { ... })
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth.user?.id;
     if (!userId) return { household: null, error: "Not authenticated" };
@@ -413,21 +489,14 @@ export async function createHousehold(
 
     if (householdError) throw householdError;
 
-    // Link user to household
-    const { error: linkError } = await supabase
-      .from("users")
-      .update({ household_id: household.id })
-      .eq("id", userId);
+    const { error: linkError } = await supabase.from("users").update({ household_id: household.id }).eq("id", userId);
     if (linkError) throw linkError;
 
-    // Create initial grocery list (previously in DB trigger, now here)
     const { error: listError } = await supabase
       .from("grocery_lists")
       .insert({ household_id: household.id, name: "Grocery List" });
-    if (listError) {
-      safeLogError("Failed to create initial grocery list", listError);
-      // Non-fatal — household still usable
-    }
+
+    if (listError) safeLogError("Failed to create initial grocery list", listError);
 
     return {
       household: {
@@ -446,8 +515,6 @@ export async function joinHousehold(
   inviteCode: string
 ): Promise<{ household: Household | null; error?: string; needsPremium?: boolean }> {
   try {
-    // Prefer: supabase.rpc("join_household_by_invite", { p_invite_code })
-    // which checks capacity + joins atomically.
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth.user?.id;
     if (!userId) return { household: null, error: "Not authenticated" };
@@ -463,16 +530,11 @@ export async function joinHousehold(
 
     if (findError || !household) return { household: null, error: "Invalid invite code" };
 
-    const { data: sub } = await supabase
-      .from("subscriptions")
-      .select("tier, status")
-      .eq("user_id", household.created_by)
-      .single();
+    const { data: sub } = await supabase.from("subscriptions").select("tier, status").eq("user_id", household.created_by).single();
 
     const isPremium = sub?.tier === "premium" && sub?.status === "active";
     const limit = isPremium ? 7 : 1;
 
-    // Race-prone, client enforced:
     const { count, error: countErr } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
@@ -491,7 +553,6 @@ export async function joinHousehold(
     const { error: linkError } = await supabase.from("users").update({ household_id: household.id }).eq("id", userId);
     if (linkError) throw linkError;
 
-    // Fetch existing family members so the store is properly initialized
     const { data: members } = await supabase
       .from("family_members")
       .select("id, name, role, allergies, dietary_preferences")
@@ -540,7 +601,6 @@ export async function verifyPhoneForAccount(phone: string, otp: string): Promise
     const userId = data?.user?.id;
     if (!userId) return { success: false, error: "Verification failed" };
 
-    // Make sure RLS only allows user to update their own row.
     const { error: updateErr } = await supabase
       .from("users")
       .update({ phone: formatted, phone_verified: true, phone_verified_at: new Date().toISOString() })
@@ -566,7 +626,6 @@ export async function saveDietaryPreferences(
   familyProfile: Record<string, any>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Security: Ensure RLS only allows household members to update this row.
     const { error } = await supabase
       .from("households")
       .update({

@@ -42,14 +42,15 @@ const ErrorCode = iapModule?.ErrorCode ?? {};
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export const IAP_PRODUCTS = {
-  PREMIUM_YEARLY: "com.memoryaisle.premium.yearly001",
+  PREMIUM_MONTHLY: "com.memoryaisle.premium.monthly001",
 } as const;
 
-const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_YEARLY];
+const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_MONTHLY];
 
 // All product IDs we've ever shipped — needed for restore to find old purchases
 const ALL_PREMIUM_PRODUCT_IDS = [
-  IAP_PRODUCTS.PREMIUM_YEARLY,
+  IAP_PRODUCTS.PREMIUM_MONTHLY,
+  "com.memoryaisle.premium.yearly001",
   "com.memoryaisle.premium.yearly",
 ];
 
@@ -78,7 +79,7 @@ export const SUBSCRIPTION_TIERS = {
   premium: {
     id: "premium",
     name: "Premium",
-    price: { monthly: 9.99, yearly: 49.99 },
+    price: { monthly: 9.99 },
     features: {
       maxLists: -1,
       maxItemsPerList: -1,
@@ -164,7 +165,7 @@ async function safeFinishTransaction(purchase: Purchase) {
  */
 function extractPurchaseFields(purchase: Purchase) {
   return {
-    productId: purchase.productId ?? IAP_PRODUCTS.PREMIUM_YEARLY,
+    productId: purchase.productId ?? IAP_PRODUCTS.PREMIUM_MONTHLY,
     transactionId: purchase.transactionId ?? null,
     originalTransactionId:
       purchase.originalTransactionIdentifierIOS ??
@@ -176,9 +177,9 @@ function extractPurchaseFields(purchase: Purchase) {
       purchase.expirationDateIOS ??
       purchase.expiresDateIOS ??
       purchase.expirationDate ??
-      // Fallback: if no expiry field, estimate 1 year from purchase date
+      // Fallback: if no expiry field, estimate 30 days from purchase date
       (purchase.transactionDate
-        ? new Date(Number(purchase.transactionDate) + 365 * 24 * 60 * 60 * 1000).toISOString()
+        ? new Date(Number(purchase.transactionDate) + 30 * 24 * 60 * 60 * 1000).toISOString()
         : undefined),
     // react-native-iap may expose these on newer versions
     environment:
@@ -362,7 +363,7 @@ class IAPService {
 
       const p = products[0];
       return {
-        productId: p.id ?? p.productId ?? IAP_PRODUCTS.PREMIUM_YEARLY,
+        productId: p.id ?? p.productId ?? IAP_PRODUCTS.PREMIUM_MONTHLY,
         title: p.title ?? "",
         description: p.description ?? "",
         localizedPrice: p.displayPrice ?? p.localizedPrice ?? "",
@@ -409,10 +410,10 @@ class IAPService {
       await requestSubscription({
         request:
           Platform.OS === "ios"
-            ? { apple: { sku: IAP_PRODUCTS.PREMIUM_YEARLY } }
-            : { google: { skus: [IAP_PRODUCTS.PREMIUM_YEARLY] } },
+            ? { apple: { sku: IAP_PRODUCTS.PREMIUM_MONTHLY } }
+            : { google: { skus: [IAP_PRODUCTS.PREMIUM_MONTHLY] } },
         type: "subs",
-        sku: IAP_PRODUCTS.PREMIUM_YEARLY, // some versions use sku directly
+        sku: IAP_PRODUCTS.PREMIUM_MONTHLY, // some versions use sku directly
       });
 
       return resultPromise;

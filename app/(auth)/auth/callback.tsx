@@ -1,57 +1,85 @@
-import { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ActivityIndicator,
-  StyleSheet,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { router, useLocalSearchParams, useGlobalSearchParams } from 'expo-router';
-import * as Linking from 'expo-linking';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '../../../src/services/supabase';
-import { logger } from '../../../src/utils/logger';
-import { oauthState } from '../../../src/services/oauthState';
-import { getCurrentUser, getUserHousehold } from '../../../src/services/auth';
-import { useAuthStore } from '../../../src/stores/authStore';
-import {
-  COLORS,
-  FONT_SIZES,
-  SPACING,
-  BORDER_RADIUS,
-  SHADOWS,
-} from '../../../src/constants/theme';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import { router, useLocalSearchParams, useGlobalSearchParams } from "expo-router";
+import * as Linking from "expo-linking";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { supabase } from "../../../src/services/supabase";
+import { logger } from "../../../src/utils/logger";
+import { oauthState } from "../../../src/services/oauthState";
+import { getCurrentUser, getUserHousehold } from "../../../src/services/auth";
+import { useAuthStore } from "../../../src/stores/authStore";
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from "../../../src/constants/theme";
+
+/**
+ * CALLBACK SCREEN — CODE AUDIT NOTES
+ *
+ * ✅ Password recovery:
+ *  - It's valid to accept access_token/refresh_token via deep link ONLY for `type=recovery`.
+ *
+ * ✅ OAuth PKCE:
+ *  - Do NOT accept implicit flow tokens.
+ *  - DO exchange PKCE using the FULL callback URL (not just the `code`).
+ *
+ * CRITICAL BUG FIXES in this rewrite:
+ *  1) exchangeCodeForSession(): pass FULL URL (returnedUrl) not `code`
+ *  2) safety timeout: avoid stale closure on `mode` by using a ref
+ *  3) no "defer navigation and return to spinner" when oauthState.inProgress:
+ *     after successful exchange, ALWAYS route away (RootIndex can handle bootstrapping)
+ */
+
+type Mode = "loading" | "recovery";
+
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+async function pollForSession(maxMs = 2500) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) return data.session;
+    await sleep(150);
+  }
+  return null;
+}
 
 export default function AuthCallbackScreen() {
   const params = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
 
-  const [mode, setMode] = useState<'loading' | 'recovery'>('loading');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState<Mode>("loading");
+  const modeRef = useRef<Mode>("loading");
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
-  // Extract stable primitive values from params to avoid useEffect re-runs
-  // (useLocalSearchParams/useGlobalSearchParams return new object refs each render)
-  const paramCode = (params.code || globalParams.code || '') as string;
-  const paramType = (params.type || globalParams.type || '') as string;
-  const paramAccessToken = (params.access_token || globalParams.access_token || '') as string;
-  const paramRefreshToken = (params.refresh_token || globalParams.refresh_token || '') as string;
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // Extract stable primitives (prevents effect thrash)
+  const paramCode = useMemo(() => String(params.code || globalParams.code || ""), [params.code, globalParams.code]);
+  const paramType = useMemo(() => String(params.type || globalParams.type || ""), [params.type, globalParams.type]);
+  const paramAccessToken = useMemo(
+    () => String(params.access_token || globalParams.access_token || ""),
+    [params.access_token, globalParams.access_token]
+  );
+  const paramRefreshToken = useMemo(
+    () => String(params.refresh_token || globalParams.refresh_token || ""),
+    [params.refresh_token, globalParams.refresh_token]
+  );
 
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout — if we're stuck loading for 10s, bail to sign-in
+    // Safety timeout — only fire if we're STILL on loading
     const safetyTimeout = setTimeout(() => {
-      if (isMounted && mode === 'loading') {
-        logger.warn('Auth callback safety timeout — redirecting to sign-in');
-        router.replace('/(auth)/sign-in');
+      if (!isMounted) return;
+      if (modeRef.current === "loading") {
+        logger.warn("Auth callback safety timeout — redirecting to sign-in");
+        router.replace("/(auth)/sign-in");
       }
     }, 10_000);
 
@@ -59,176 +87,179 @@ export default function AuthCallbackScreen() {
       if (!isMounted) return;
 
       try {
-        // 1. Parse params from URL if router didn't catch them
+        // ---------- 1) Gather inputs ----------
         let type = paramType || null;
+
+        // Only used for recovery
         let accessToken = paramAccessToken || null;
         let refreshToken = paramRefreshToken || null;
 
-        if (url && (!accessToken || !refreshToken)) {
+        // Parse from raw URL if router didn't populate them
+        if (url) {
           try {
             const urlObj = new URL(url);
-            const hashParams = new URLSearchParams(urlObj.hash.substring(1));
+            const hashParams = new URLSearchParams(urlObj.hash.startsWith("#") ? urlObj.hash.slice(1) : urlObj.hash);
             const queryParams = new URLSearchParams(urlObj.search);
 
-            type = type || hashParams.get('type') || queryParams.get('type');
-            accessToken = accessToken || hashParams.get('access_token');
-            refreshToken = refreshToken || hashParams.get('refresh_token');
+            type = type || hashParams.get("type") || queryParams.get("type");
+
+            // Only relevant for recovery (implicit tokens)
+            accessToken = accessToken || hashParams.get("access_token") || null;
+            refreshToken = refreshToken || hashParams.get("refresh_token") || null;
           } catch (parseError) {
-            logger.warn('Failed to parse raw deep link URL', parseError);
+            logger.warn("Failed to parse deep link URL", { message: (parseError as any)?.message });
           }
         }
 
-        // 2. Password recovery flow (requires tokens — this is the only
-        //    legitimate use of access_token/refresh_token via deep link)
-        if (type === 'recovery' && accessToken && refreshToken) {
+        // ---------- 2) Password recovery flow ----------
+        if (type === "recovery" && accessToken && refreshToken) {
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
 
           if (sessionError) {
-            Alert.alert('Link Expired', 'This password reset link has expired. Please request a new one.', [
-              { text: 'OK', onPress: () => router.replace('/(auth)/sign-in') },
+            Alert.alert("Link Expired", "This password reset link has expired. Please request a new one.", [
+              { text: "OK", onPress: () => router.replace("/(auth)/sign-in") },
             ]);
             return;
           }
 
-          if (isMounted) setMode('recovery');
+          if (isMounted) setMode("recovery");
           return;
         }
 
-        // 3. PKCE OAuth flow — this is the ONLY place that exchanges codes.
-        //    Exchange lock prevents double exchange from useEffect re-runs.
-        let code: string | null = paramCode || null;
-        if (!code && url) {
-          try {
-            const urlObj = new URL(url);
-            code = new URLSearchParams(urlObj.search).get('code');
-          } catch {}
+        // ---------- 3) PKCE OAuth flow ----------
+        // We need a FULL callback URL for exchangeCodeForSession().
+        // Your previous code used only `code` — that can fail / be inconsistent.
+        let returnedUrl: string | null = null;
+
+        // Prefer router param code, but still build full URL
+        const codeFromParams = paramCode || null;
+
+        if (url) {
+          // If we got the full URL, use it.
+          returnedUrl = url;
+        } else if (codeFromParams) {
+          // If router only gave code, reconstruct a full URL.
+          // IMPORTANT: must match your redirectTo.
+          returnedUrl = `memoryaisle://auth/callback?code=${encodeURIComponent(codeFromParams)}`;
         }
 
-        if (code) {
-          // Acquire exchange lock — only the first caller exchanges
-          if (!oauthState.tryExchange()) {
-            // Already exchanged — just check if we should navigate
-            if (!oauthState.isInProgress()) {
-              const { data: session } = await supabase.auth.getSession();
-              if (session?.session) {
-                router.replace('/');
-              } else {
-                router.replace('/(auth)/sign-in');
-              }
-            }
-            return;
-          }
-
-          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-          if (sessionError) {
-            // Check if session exists anyway (rare edge case)
-            const { data: existingSession } = await supabase.auth.getSession();
-            if (!existingSession?.session) {
-              logger.error('PKCE code exchange failed', sessionError);
-              router.replace('/(auth)/sign-in');
-              return;
-            }
-          }
-
-          // If landing.tsx started the OAuth flow, let it handle navigation.
-          // signInWithOAuthWeb will poll and find the session we just established.
-          if (oauthState.isInProgress()) {
-            return;
-          }
-
-          // Cold-start deep link: load user+household before navigating
-          // so app/index.tsx doesn't see !user and bounce to landing
+        // Validate there is a code
+        let code: string | null = null;
+        if (returnedUrl) {
           try {
+            const u = new URL(returnedUrl);
+            code = new URLSearchParams(u.search).get("code");
+          } catch {
+            // ignore
+          }
+        }
+
+        if (code && returnedUrl) {
+          // Acquire exchange lock — prevents double exchange across rerenders / races
+          if (oauthState.tryExchange()) {
+            const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(returnedUrl);
+
+            if (exchangeErr) {
+              // If something else already exchanged, session might still exist
+              logger.error("PKCE exchange failed", { message: exchangeErr.message });
+            }
+          }
+
+          // Wait briefly for session persistence
+          const session = await pollForSession(2500);
+
+          if (!session) {
+            router.replace("/(auth)/sign-in");
+            return;
+          }
+
+          /**
+           * IMPORTANT NAV FIX:
+           * Do NOT "return and wait" when oauthState.isInProgress().
+           * This screen will just sit on the spinner.
+           *
+           * Let RootIndex decide where to go next; it can show loading while store bootstraps.
+           */
+          try {
+            // Optional: warm the store to avoid brief bounce if your RootIndex uses user/household.
+            // If your RootIndex is properly gated on session/hydrated, you can remove this block.
             const { setUser, setHousehold } = useAuthStore.getState();
-            const user = await getCurrentUser();
-            setUser(user);
-            if (user) {
-              const household = await getUserHousehold(user);
-              setHousehold(household);
+            const appUser = await getCurrentUser();
+            setUser(appUser);
+            if (appUser) {
+              const hh = await getUserHousehold(appUser);
+              setHousehold(hh);
             }
           } catch (e) {
-            logger.error('Auth callback: failed to load user', { message: (e as any)?.message });
+            logger.warn("Callback preload user/household failed", { message: (e as any)?.message });
           }
 
-          router.replace('/');
+          router.replace("/");
           return;
         }
 
-        // 4. No valid code or recovery tokens — bounce to login
-        // (Implicit flow tokens are NOT accepted — PKCE only)
-        router.replace('/(auth)/sign-in');
+        // ---------- 4) No valid recovery tokens or PKCE code ----------
+        router.replace("/(auth)/sign-in");
       } catch (err) {
-        logger.error('Auth callback error', err);
-        router.replace('/(auth)/sign-in');
+        logger.error("Auth callback error", { message: (err as any)?.message });
+        router.replace("/(auth)/sign-in");
       }
     };
 
-    // Check Cold Boot URL
+    // Cold boot
     Linking.getInitialURL().then(handleUrl);
 
-    // Listen for Warm Boot URLs
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      handleUrl(url);
-    });
+    // Warm boot
+    const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
 
     return () => {
       isMounted = false;
       clearTimeout(safetyTimeout);
-      subscription.remove();
+      sub.remove();
     };
   }, [paramCode, paramType, paramAccessToken, paramRefreshToken]);
 
   const handleResetPassword = async () => {
-    setError('');
+    setError("");
 
     if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters.');
+      setError("Password must be at least 6 characters.");
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError("Passwords do not match.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
       if (updateError) {
         setError(updateError.message);
         return;
       }
 
-      // Show alert first, THEN sign out on confirm to prevent UI unmount crashes
-      Alert.alert(
-        'Password Updated',
-        'Your password has been reset. Please sign in with your new password.',
-        [
-          { 
-            text: 'Sign In', 
-            onPress: async () => {
-              await supabase.auth.signOut();
-              router.replace('/(auth)/sign-in');
-            }
-          }
-        ],
-      );
+      Alert.alert("Password Updated", "Your password has been reset. Please sign in with your new password.", [
+        {
+          text: "Sign In",
+          onPress: async () => {
+            await supabase.auth.signOut();
+            router.replace("/(auth)/sign-in");
+          },
+        },
+      ]);
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError("Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Loading state
-  if (mode === 'loading') {
+  if (mode === "loading") {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={COLORS.gold.base} />
@@ -236,23 +267,16 @@ export default function AuthCallbackScreen() {
     );
   }
 
-  // Password recovery form
   return (
     <View style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
         <View style={styles.content}>
           <Text style={styles.title}>Set New Password</Text>
           <Text style={styles.subtitle}>Enter your new password below.</Text>
 
           <View style={styles.formCard}>
             <BlurView intensity={40} tint="light" style={styles.cardBlur} />
-            <LinearGradient
-              colors={['rgba(255, 255, 255, 0.7)', 'rgba(255, 255, 255, 0.4)']}
-              style={styles.cardGradient}
-            />
+            <LinearGradient colors={["rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.4)"]} style={styles.cardGradient} />
             <View style={styles.cardBorder} />
 
             <View style={styles.formContent}>
@@ -266,7 +290,10 @@ export default function AuthCallbackScreen() {
                   secureTextEntry
                   autoComplete="new-password"
                   value={newPassword}
-                  onChangeText={(text) => { setNewPassword(text); setError(''); }}
+                  onChangeText={(text) => {
+                    setNewPassword(text);
+                    setError("");
+                  }}
                 />
               </View>
 
@@ -280,7 +307,10 @@ export default function AuthCallbackScreen() {
                   secureTextEntry
                   autoComplete="new-password"
                   value={confirmPassword}
-                  onChangeText={(text) => { setConfirmPassword(text); setError(''); }}
+                  onChangeText={(text) => {
+                    setConfirmPassword(text);
+                    setError("");
+                  }}
                   onSubmitEditing={handleResetPassword}
                 />
               </View>
@@ -288,24 +318,13 @@ export default function AuthCallbackScreen() {
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <Pressable
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && styles.buttonPressed,
-                  isSubmitting && styles.buttonDisabled,
-                ]}
+                style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed, isSubmitting && styles.buttonDisabled]}
                 onPress={handleResetPassword}
                 disabled={isSubmitting}
               >
-                <LinearGradient
-                  colors={[COLORS.gold.base, COLORS.gold.dark]}
-                  style={styles.primaryButtonGradient}
-                />
+                <LinearGradient colors={[COLORS.gold.base, COLORS.gold.dark]} style={styles.primaryButtonGradient} />
                 <View style={styles.primaryButtonBorder} />
-                {isSubmitting ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Update Password</Text>
-                )}
+                {isSubmitting ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>Update Password</Text>}
               </Pressable>
             </View>
           </View>
@@ -316,106 +335,25 @@ export default function AuthCallbackScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.platinum.lightest,
-  },
-  keyboardView: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  content: {
-    paddingHorizontal: SPACING.lg,
-  },
-  title: {
-    fontFamily: 'Georgia',
-    fontSize: 28,
-    fontWeight: '500',
-    color: COLORS.text.primary,
-    textAlign: 'center',
-    marginBottom: SPACING.xs,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text.secondary,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
-  },
-  formCard: {
-    borderRadius: BORDER_RADIUS.xxl,
-    overflow: 'hidden',
-    ...SHADOWS.glassElevated,
-  },
-  cardBlur: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  cardGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  cardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: BORDER_RADIUS.xxl,
-    borderWidth: 1,
-    borderColor: COLORS.frost.border,
-  },
-  formContent: {
-    padding: SPACING.xl,
-  },
-  inputContainer: {
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    marginBottom: SPACING.md,
-  },
-  inputBlur: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  inputBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.frost.border,
-  },
-  input: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md + 2,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text.primary,
-  },
-  errorText: {
-    fontSize: FONT_SIZES.sm,
-    color: '#E53E3E',
-    marginBottom: SPACING.sm,
-  },
-  primaryButton: {
-    borderRadius: BORDER_RADIUS.lg,
-    paddingVertical: SPACING.md + 4,
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginTop: SPACING.sm,
-    ...SHADOWS.goldGlow,
-  },
-  primaryButtonGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  primaryButtonBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 220, 180, 0.5)',
-  },
-  primaryButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  buttonPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.9,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
+  container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.platinum.lightest },
+  keyboardView: { flex: 1, width: "100%", justifyContent: "center" },
+  content: { paddingHorizontal: SPACING.lg },
+  title: { fontFamily: "Georgia", fontSize: 28, fontWeight: "500", color: COLORS.text.primary, textAlign: "center", marginBottom: SPACING.xs },
+  subtitle: { fontSize: FONT_SIZES.md, color: COLORS.text.secondary, textAlign: "center", marginBottom: SPACING.xl },
+  formCard: { borderRadius: BORDER_RADIUS.xxl, overflow: "hidden", ...SHADOWS.glassElevated },
+  cardBlur: { ...StyleSheet.absoluteFillObject },
+  cardGradient: { ...StyleSheet.absoluteFillObject },
+  cardBorder: { ...StyleSheet.absoluteFillObject, borderRadius: BORDER_RADIUS.xxl, borderWidth: 1, borderColor: COLORS.frost.border },
+  formContent: { padding: SPACING.xl },
+  inputContainer: { borderRadius: BORDER_RADIUS.lg, overflow: "hidden", marginBottom: SPACING.md },
+  inputBlur: { ...StyleSheet.absoluteFillObject },
+  inputBorder: { ...StyleSheet.absoluteFillObject, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: COLORS.frost.border },
+  input: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md + 2, fontSize: FONT_SIZES.md, color: COLORS.text.primary },
+  errorText: { fontSize: FONT_SIZES.sm, color: "#E53E3E", marginBottom: SPACING.sm },
+  primaryButton: { borderRadius: BORDER_RADIUS.lg, paddingVertical: SPACING.md + 4, alignItems: "center", overflow: "hidden", marginTop: SPACING.sm, ...SHADOWS.goldGlow },
+  primaryButtonGradient: { ...StyleSheet.absoluteFillObject },
+  primaryButtonBorder: { ...StyleSheet.absoluteFillObject, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: "rgba(255, 220, 180, 0.5)" },
+  primaryButtonText: { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.white },
+  buttonPressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
+  buttonDisabled: { opacity: 0.6 },
 });

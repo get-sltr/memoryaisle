@@ -16,6 +16,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { logger } from '../../src/utils/logger';
 import { SubscriptionModal } from '../../src/components/SubscriptionModal';
@@ -388,8 +389,8 @@ export default function SettingsScreen() {
 
   // Display price from live product (StoreKit) or fall back to SUBSCRIPTION_TIERS
   const displayPrice = product?.localizedPrice
-    ? `${product.localizedPrice}/year`
-    : `$${SUBSCRIPTION_TIERS.premium.price.yearly}/year`;
+    ? `${product.localizedPrice}/mo`
+    : `$${SUBSCRIPTION_TIERS.premium.price.monthly.toFixed(2)}/mo`;
 
   return (
     <ScreenWrapper>
@@ -471,7 +472,7 @@ export default function SettingsScreen() {
                   </Text>
                   <View style={styles.upgradePricing}>
                     <Text style={styles.upgradePrice}>{displayPrice}</Text>
-                    <Text style={styles.upgradeSavings}>2-week free trial</Text>
+                    <Text style={styles.upgradeSavings}>7-day free trial</Text>
                   </View>
                 </View>
                 <View style={styles.upgradeArrow}>
@@ -670,7 +671,7 @@ export default function SettingsScreen() {
         </Pressable>
 
         {/* Version */}
-        <Text style={styles.versionText}>MemoryAisle v1.1.0</Text>
+        <Text style={styles.versionText}>MemoryAisle v{Constants.expoConfig?.version ?? '1.1.0'}</Text>
       </ScrollView>
 
       <SubscriptionModal

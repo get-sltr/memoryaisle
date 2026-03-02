@@ -1,125 +1,41 @@
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { MiraFloatingButton } from '../../src/components/MiraFloatingButton';
 import { BottomTabBar } from '../../src/components/BottomTabBar';
 
 export default function AppLayout() {
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.container}>
       <Tabs
         tabBar={(props) => <BottomTabBar {...props} />}
         screenOptions={{
           headerShown: false,
         }}
       >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'List',
-          }}
-        />
-        <Tabs.Screen
-          name="mealplan"
-          options={{
-            title: 'Plan',
-          }}
-        />
-        <Tabs.Screen
-          name="receipts"
-          options={{
-            title: 'Scan',
-          }}
-        />
-        <Tabs.Screen
-          name="favorites"
-          options={{
-            title: 'Favs',
-          }}
-        />
-        <Tabs.Screen
-          name="recipes"
-          options={{
-            title: 'Recipes',
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: 'Profile',
-          }}
-        />
-        <Tabs.Screen
-          name="family"
-          options={{
-            title: 'Family',
-          }}
-        />
-        <Tabs.Screen
-          name="calendar"
-          options={{
-            title: 'Calendar',
-          }}
-        />
-        <Tabs.Screen
-          name="trips"
-          options={{
-            title: 'Trips',
-          }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'Settings',
-          }}
-        />
-        <Tabs.Screen
-          name="admin"
-          options={{
-            title: 'Admin',
-          }}
-        />
-        <Tabs.Screen
-          name="upgrade"
-          options={{
-            title: 'Upgrade',
-          }}
-        />
-        <Tabs.Screen
-          name="store-cards"
-          options={{
-            title: 'Store Cards',
-          }}
-        />
-        <Tabs.Screen
-          name="orders"
-          options={{
-            title: 'Orders',
-          }}
-        />
-        <Tabs.Screen
-          name="reports"
-          options={{
-            title: 'Reports',
-          }}
-        />
-        <Tabs.Screen
-          name="prices"
-          options={{
-            title: 'Prices',
-          }}
-        />
-        <Tabs.Screen
-          name="meal-plans"
-          options={{
-            title: 'Meal Plans',
-          }}
-        />
-        <Tabs.Screen
-          name="checkout"
-          options={{
-            title: 'Checkout',
-          }}
-        />
+        {/* Primary tabs (visible in BottomTabBar) */}
+        <Tabs.Screen name="index" options={{ title: 'List' }} />
+        <Tabs.Screen name="calendar" options={{ title: 'Calendar' }} />
+        <Tabs.Screen name="receipts" options={{ title: 'Scan' }} />
+        <Tabs.Screen name="favorites" options={{ title: 'Favs' }} />
+        <Tabs.Screen name="settings" options={{ title: 'Menu' }} />
+
+        {/* Non-tab screens (navigated to programmatically) */}
+        <Tabs.Screen name="mealplan" options={{ title: 'Plan', href: null }} />
+        <Tabs.Screen name="recipes" options={{ title: 'Recipes', href: null }} />
+        <Tabs.Screen name="profile" options={{ title: 'Profile', href: null }} />
+        <Tabs.Screen name="family" options={{ title: 'Family', href: null }} />
+        <Tabs.Screen name="trips" options={{ title: 'Trips', href: null }} />
+        <Tabs.Screen name="admin" options={{ title: 'Admin', href: null }} />
+        <Tabs.Screen name="upgrade" options={{ title: 'Upgrade', href: null }} />
+        <Tabs.Screen name="store-cards" options={{ title: 'Store Cards', href: null }} />
+        <Tabs.Screen name="orders" options={{ title: 'Orders', href: null }} />
+        <Tabs.Screen name="reports" options={{ title: 'Reports', href: null }} />
+        <Tabs.Screen name="prices" options={{ title: 'Prices', href: null }} />
+        <Tabs.Screen name="meal-plans" options={{ title: 'Meal Plans', href: null }} />
+        <Tabs.Screen name="checkout" options={{ title: 'Checkout', href: null }} />
+        <Tabs.Screen name="privacy" options={{ title: 'Privacy', href: null }} />
+        <Tabs.Screen name="terms" options={{ title: 'Terms', href: null }} />
+        <Tabs.Screen name="order-detail" options={{ title: 'Order Detail', href: null }} />
       </Tabs>
 
       {/* Mira Floating Button - accessible from all screens */}
@@ -127,3 +43,9 @@ export default function AppLayout() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});

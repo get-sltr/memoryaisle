@@ -1,49 +1,55 @@
 // app/index.tsx
-// Root route — decides where to send users based on auth + household state.
-// Without this file, Expo Router defaults ALL users to /(app)/index.tsx.
-import { Redirect } from 'expo-router';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useAuthStore } from '../src/stores/authStore';
-import { oauthState } from '../src/services/oauthState';
+import { useEffect } from "react";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import { useAuthStore } from "../src/stores/authStore";
 
-export default function RootIndex() {
-  const { user, household, isLoading, isGuest } = useAuthStore();
+export default function Index() {
+  const router = useRouter();
 
-  // Still bootstrapping or mid-OAuth — don't redirect yet.
-  // oauthState.isInProgress() prevents bouncing to landing while
-  // callback.tsx is exchanging the code and the session isn't written yet.
-  if (isLoading || oauthState.isInProgress()) {
+  const { user, household, isAuthenticated, isLoading, isGuest } = useAuthStore();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (isGuest) {
+      router.replace("/(app)");
+      return;
+    }
+
+    if (!isAuthenticated) {
+      router.replace("/(auth)/landing");
+      return;
+    }
+
+    if (!user || !household) {
+      router.replace("/(auth)/household");
+      return;
+    }
+
+    router.replace("/(app)");
+  }, [isLoading, user, household, isGuest, isAuthenticated, router]);
+
+  if (isLoading) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#D4AF37" />
+      <View style={styles.container}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  // Guest mode — limited app access
-  if (isGuest) {
-    return <Redirect href="/(app)" />;
-  }
-
-  // Not authenticated — go to sign in
-  if (!user) {
-    return <Redirect href="/(auth)/landing" />;
-  }
-
-  // Authenticated but no household — onboarding
-  if (!household) {
-    return <Redirect href="/(auth)/household" />;
-  }
-
-  // Fully set up — main app
-  return <Redirect href="/(app)" />;
+  // Optional: avoid flashing blank UI if a replace is about to happen
+  return (
+    <View style={styles.container}>
+      <ActivityIndicator size="large" />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  loading: {
+  container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FDF5E6',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

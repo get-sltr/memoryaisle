@@ -452,14 +452,13 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Mira chat error:', error);
+    console.error('Mira chat error:', String(error));
     return new Response(
       JSON.stringify({
         success: false,
         intent: 'error',
         items: [],
         response: "Oops, something went wrong. Try again?",
-        error: error.message,
       }),
       {
         status: 500,

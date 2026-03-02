@@ -46,20 +46,21 @@ export function SubscriptionModal({
   highlightFeature,
 }: SubscriptionModalProps) {
   const insets = useSafeAreaInsets();
-  const { isPremium, purchaseYearly, restorePurchases, product } = useSubscription();
+  const { isPremium, purchaseMonthly, restorePurchases, product, refresh } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
   // Use live price from Apple, fall back to tier constant
-  const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.yearly.toFixed(2)}`;
+  const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.monthly.toFixed(2)}`;
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const result = await purchaseYearly();
+      const result = await purchaseMonthly();
 
       switch (result.status) {
         case 'success':
+          await refresh();
           Alert.alert(
             'Welcome to Premium!',
             'Thank you for subscribing. All premium features are now unlocked!',
@@ -166,10 +167,10 @@ export function SubscriptionModal({
               <Text style={styles.subscriptionName}>MemoryAisle Premium</Text>
               <View style={styles.priceRow}>
                 <Text style={styles.planPrice}>{displayPrice}</Text>
-                <Text style={styles.planPeriod}>/year</Text>
+                <Text style={styles.planPeriod}>/mo</Text>
               </View>
-              <Text style={styles.trialText}>Includes 2-week free trial</Text>
-              <Text style={styles.subscriptionType}>Yearly auto-renewable subscription</Text>
+              <Text style={styles.trialText}>Includes 7-day free trial</Text>
+              <Text style={styles.subscriptionType}>Monthly auto-renewable subscription</Text>
             </View>
 
             {/* Features */}
@@ -194,7 +195,7 @@ export function SubscriptionModal({
               onPress={handleSubscribe}
               disabled={isLoading || isRestoring}
               accessibilityRole="button"
-              accessibilityLabel={`Subscribe for ${displayPrice} per year with 2-week free trial`}
+              accessibilityLabel={`Subscribe for ${displayPrice} per month with 7-day free trial`}
             >
               <LinearGradient
                 colors={[COLORS.gold.light, COLORS.gold.base]}
@@ -204,7 +205,7 @@ export function SubscriptionModal({
                 <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.ctaText}>
-                  Start Free Trial - {displayPrice}/year
+                  Start Free Trial - {displayPrice}/mo
                 </Text>
               )}
             </Pressable>
@@ -225,7 +226,7 @@ export function SubscriptionModal({
             </Pressable>
 
             <Text style={styles.termsText}>
-              Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/year unless canceled at least 24 hours before the end of the current period.{'\n\n'}
+              Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/month unless canceled at least 24 hours before the end of the current monthly period.{'\n\n'}
               <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/terms')}>Terms of Use</Text>
               {'  •  '}
               <Text style={styles.termsLink} onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}>Privacy Policy</Text>

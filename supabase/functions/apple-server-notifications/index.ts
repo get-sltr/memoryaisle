@@ -23,7 +23,7 @@ import {
 // Constants
 // ============================================
 
-const PREMIUM_YEARLY_PRODUCT_IDS = ['com.memoryaisle.premium.yearly001', 'com.memoryaisle.premium.yearly'];
+const PREMIUM_PRODUCT_IDS = ['com.memoryaisle.premium.monthly001', 'com.memoryaisle.premium.yearly001', 'com.memoryaisle.premium.yearly'];
 
 // Maximum age for a notification's signedDate before we reject it as stale.
 // Apple retries over 24h, so we accept up to 48h to avoid missing legitimate retries.
@@ -230,7 +230,7 @@ serve(async (req) => {
             );
           }
 
-          if (!PREMIUM_YEARLY_PRODUCT_IDS.includes(productId)) {
+          if (!PREMIUM_PRODUCT_IDS.includes(productId)) {
             processingResult = 'ignored';
             processingError = `Unknown product: ${productId}`;
             break;
@@ -267,7 +267,7 @@ serve(async (req) => {
             break;
           }
 
-          if (!PREMIUM_YEARLY_PRODUCT_IDS.includes(productId)) {
+          if (!PREMIUM_PRODUCT_IDS.includes(productId)) {
             processingResult = 'ignored';
             processingError = `Unknown product: ${productId}`;
             break;

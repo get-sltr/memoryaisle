@@ -45,17 +45,17 @@ export default function UpgradePage() {
   const { colors } = useThemeStore();
   const router = useRouter();
   // Ensure we extract refresh so we can sync the UI instantly
-  const { isPremium, purchaseYearly, restorePurchases, product, refresh } = useSubscription();
+  const { isPremium, purchaseMonthly, restorePurchases, product, refresh } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
   // Use live price from Apple, fall back to tier constant
-  const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.yearly.toFixed(2)}`;
+  const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.monthly.toFixed(2)}`;
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const result = await purchaseYearly();
+      const result = await purchaseMonthly();
 
       switch (result.status) {
         case 'success':
@@ -180,10 +180,10 @@ export default function UpgradePage() {
           <Text style={styles.subscriptionName}>MemoryAisle Premium</Text>
           <View style={styles.priceRow}>
             <Text style={styles.planPrice}>{displayPrice}</Text>
-            <Text style={styles.planPeriod}>/year</Text>
+            <Text style={styles.planPeriod}>/mo</Text>
           </View>
-          <Text style={styles.trialText}>Includes 2-week free trial</Text>
-          <Text style={styles.subscriptionDetails}>Yearly auto-renewable subscription</Text>
+          <Text style={styles.trialText}>Includes 7-day free trial</Text>
+          <Text style={styles.subscriptionDetails}>Monthly auto-renewable subscription</Text>
 
           {/* Subscribe Button */}
           <Pressable
@@ -191,7 +191,7 @@ export default function UpgradePage() {
             onPress={handleSubscribe}
             disabled={isLoading || isRestoring}
             accessibilityRole="button"
-            accessibilityLabel={`Subscribe for ${displayPrice} per year with 2-week free trial`}
+            accessibilityLabel={`Subscribe for ${displayPrice} per month with 7-day free trial`}
           >
             <LinearGradient
               colors={isLoading ? ['#CCCCCC', '#AAAAAA'] : [COLORS.gold.light, COLORS.gold.base]}
@@ -256,7 +256,7 @@ export default function UpgradePage() {
             .
           </Text>
           <Text style={styles.cancelText}>
-            Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/year unless canceled at least 24 hours before the end of the current period. Manage subscriptions in your Apple ID account settings.
+            Payment will be charged to your Apple ID after the free trial ends. Subscription automatically renews at {displayPrice}/month unless canceled at least 24 hours before the end of the current monthly period. Manage subscriptions in your Apple ID account settings.
           </Text>
         </View>
       </ScrollView>
@@ -418,8 +418,9 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.text.tertiary, // <-- Fixed crash hazard
+    color: COLORS.text.tertiary,
     marginTop: SPACING.sm,
+    textAlign: 'center',
   },
 
   // CTA inside plan card

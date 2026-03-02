@@ -46,5 +46,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     household: null,
     isAuthenticated: false,
     isGuest: false,
+    isLoading: false,
   }),
 }));

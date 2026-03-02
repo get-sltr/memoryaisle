@@ -1,11 +1,6 @@
 // Mira Receipt Scanner - Extract items and prices, save to history, find what's missing
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://memoryaisle.app',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
 // Keyword-based item categorization (6 report buckets)
 // Maps to: dairy, produce, meat, bakery, pantry, other
@@ -27,21 +22,63 @@ function categorizeItem(name: string): string {
   return 'other';
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
+
+  const origin = req.headers.get('Origin');
+  const corsHeaders = getCorsHeaders(origin);
 
   try {
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
     if (!OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY not configured');
     }
 
+    // --- Authenticate the user via JWT ---
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Missing authorization' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: userError } = await anonClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Invalid or expired session' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const { image, listItems, householdId, storeName } = await req.json();
+
+    // --- Verify user belongs to the household ---
+    if (householdId) {
+      const { data: membership } = await anonClient
+        .from('users')
+        .select('household_id')
+        .eq('id', user.id)
+        .eq('household_id', householdId)
+        .maybeSingle();
+
+      if (!membership) {
+        return new Response(
+          JSON.stringify({ success: false, message: 'Not a member of this household' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
 
     if (!image) {
       throw new Error('No receipt image provided');
@@ -137,9 +174,9 @@ Rules:
       extractedItems = [];
     }
 
-    // Save to purchase_history if we have householdId and Supabase is configured
+    // Save to purchase_history if we have householdId (user already verified as member above)
     let savedCount = 0;
-    if (householdId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && extractedItems.length > 0) {
+    if (householdId && extractedItems.length > 0) {
       try {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
         
@@ -212,14 +249,13 @@ Rules:
     );
 
   } catch (error) {
-    console.error('Receipt scan error:', error);
+    console.error('Receipt scan error:', String(error));
     return new Response(
       JSON.stringify({
         success: false,
         purchasedItems: [],
         missingItems: [],
         message: "Something went wrong scanning the receipt. Try again?",
-        error: error.message,
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

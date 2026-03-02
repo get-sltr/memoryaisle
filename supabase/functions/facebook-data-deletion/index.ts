@@ -1,10 +1,47 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://memoryaisle.app',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+/**
+ * Verify Facebook signed request HMAC-SHA256 signature.
+ * Returns the decoded payload if valid, null if verification fails.
+ */
+async function verifyFacebookSignedRequest(
+  signedRequest: string,
+  appSecret: string,
+): Promise<Record<string, unknown> | null> {
+  const [encodedSig, payload] = signedRequest.split('.');
+  if (!encodedSig || !payload) return null;
+
+  // Decode the signature (base64url → Uint8Array)
+  const sigBytes = Uint8Array.from(
+    atob(encodedSig.replace(/-/g, '+').replace(/_/g, '/')),
+    (c) => c.charCodeAt(0),
+  );
+
+  // Compute expected HMAC-SHA256
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(appSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const expectedSig = new Uint8Array(
+    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload)),
+  );
+
+  // Constant-time comparison
+  if (sigBytes.length !== expectedSig.length) return null;
+  let mismatch = 0;
+  for (let i = 0; i < sigBytes.length; i++) {
+    mismatch |= sigBytes[i] ^ expectedSig[i];
+  }
+  if (mismatch !== 0) return null;
+
+  // Signature valid — decode payload
+  const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+  return decoded;
+}
 
 /**
  * Facebook Data Deletion Callback
@@ -12,11 +49,14 @@ const corsHeaders = {
  * When a user removes your app from their Facebook settings or requests
  * data deletion, Facebook sends a signed request to this endpoint.
  */
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
+
+  const origin = req.headers.get('Origin');
+  const corsHeaders = getCorsHeaders(origin);
 
   // Handle GET requests - return instructions page (for Facebook URL validation)
   if (req.method === 'GET') {
@@ -71,11 +111,26 @@ serve(async (req) => {
       );
     }
 
-    // Parse the signed request from Facebook
-    const [encodedSig, payload] = (signedRequest as string).split('.');
-    const decodedPayload = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    // Verify the signed request against Facebook App Secret
+    const fbAppSecret = Deno.env.get('FACEBOOK_APP_SECRET');
+    if (!fbAppSecret) {
+      console.error('FACEBOOK_APP_SECRET not configured');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const userId = decodedPayload.user_id;
+    const decodedPayload = await verifyFacebookSignedRequest(signedRequest as string, fbAppSecret);
+    if (!decodedPayload) {
+      console.error('Facebook signed request verification failed');
+      return new Response(
+        JSON.stringify({ error: 'Invalid signed request' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const userId = decodedPayload.user_id as string;
 
     if (userId) {
       // Initialize Supabase client

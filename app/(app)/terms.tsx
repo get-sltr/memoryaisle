@@ -80,7 +80,7 @@ export default function TermsScreen() {
 
         <Section title="4. Subscription Terms">
           <Paragraph>
-            MemoryAisle Premium is available as a yearly auto-renewable subscription at $49.99/year (prices may vary by region).
+            MemoryAisle Premium is available as a monthly auto-renewable subscription at $9.99/month (prices may vary by region).
           </Paragraph>
           <BulletList items={[
             'Payment will be charged to your Apple ID account at confirmation of purchase.',

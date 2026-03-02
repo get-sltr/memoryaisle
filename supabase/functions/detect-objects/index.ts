@@ -114,9 +114,9 @@ serve(async (req) => {
       );
     }
   } catch (error) {
-    console.error('Error in detect-objects:', error);
+    console.error('Error in detect-objects:', String(error));
     return new Response(
-      JSON.stringify({ error: error.message || 'Detection failed' }),
+      JSON.stringify({ error: 'Detection failed' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

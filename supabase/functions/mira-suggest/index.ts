@@ -1,13 +1,8 @@
 // Mira Suggest - Pattern-based Predictions Edge Function
 // Provides smart grocery suggestions based on purchase history
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://memoryaisle.app',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
 interface Suggestion {
   itemName: string;
@@ -16,38 +11,63 @@ interface Suggestion {
   daysPastDue: number;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
+  const origin = req.headers.get('Origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   try {
-    // Get Supabase client with service role for RLS bypass
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase configuration missing');
-    }
-
-    // Get the authorization header to identify the user
+    // --- Authenticate the user via JWT ---
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Missing authorization' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
-    // Create client with user's JWT for RLS
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
+    // Use anon key + user JWT so RLS is enforced
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
     });
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Invalid or expired session' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     const { householdId } = await req.json();
 
     if (!householdId) {
-      throw new Error('No household ID provided');
+      return new Response(
+        JSON.stringify({ success: false, suggestions: [], message: 'No household ID provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Verify user belongs to this household
+    const { data: membership } = await supabase
+      .from('users')
+      .select('household_id')
+      .eq('id', user.id)
+      .eq('household_id', householdId)
+      .maybeSingle();
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ success: false, suggestions: [], message: 'Not a member of this household' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     // Get patterns that are due or overdue
@@ -139,13 +159,12 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Mira suggest error:', error);
+    console.error('Mira suggest error:', String(error));
     return new Response(
       JSON.stringify({
         success: false,
         suggestions: [],
         message: "Couldn't load suggestions right now.",
-        error: error.message,
       }),
       {
         status: 500,

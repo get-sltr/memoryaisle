@@ -36,6 +36,7 @@ function ShimmerEffect({ width = 200 }: { width?: number }) {
   const shimmerAnim = useRef(new Animated.Value(-1)).current;
 
   useEffect(() => {
+    let innerTimeout: ReturnType<typeof setTimeout>;
     const runShimmer = () => {
       shimmerAnim.setValue(-1);
       Animated.timing(shimmerAnim, {
@@ -44,12 +45,15 @@ function ShimmerEffect({ width = 200 }: { width?: number }) {
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }).start(() => {
-        setTimeout(runShimmer, 1500);
+        innerTimeout = setTimeout(runShimmer, 1500);
       });
     };
 
     const timeout = setTimeout(runShimmer, 500);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      clearTimeout(innerTimeout);
+    };
   }, []);
 
   const translateX = shimmerAnim.interpolate({
@@ -126,14 +130,10 @@ function FacebookLogo({ size = 20, color = '#FFFFFF' }: { size?: number; color?:
 
 export default function LandingScreen() {
   const [isLoading, setIsLoading] = useState<'google' | 'apple' | 'facebook' | null>(null);
-  const { isAuthenticated, household } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
 
-  // Redirect if authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.replace('/');
-    }
-  }, [isAuthenticated]);
+  // Note: navigation after OAuth is handled directly by handleSocialSignIn
+  // and by _layout.tsx onAuthStateChange — no need for a redundant redirect here.
 
   // Handle social sign in
   const handleSocialSignIn = async (provider: 'google' | 'apple' | 'facebook') => {

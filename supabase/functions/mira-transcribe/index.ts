@@ -215,13 +215,13 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error('Mira error:', error);
+    console.error('Mira transcribe error:', String(error));
     return new Response(
       JSON.stringify({
         success: false,
         intent: 'error',
         items: [],
         response: 'Something went wrong. Try again?',
-        error: error.message,
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

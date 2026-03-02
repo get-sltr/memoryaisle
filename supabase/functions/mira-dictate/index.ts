@@ -159,13 +159,12 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Dictation error:', error);
+    console.error('Dictation error:', String(error));
     return new Response(
       JSON.stringify({
         success: false,
         items: [],
         message: 'Something went wrong',
-        error: error.message,
         timing: { total: Date.now() - startTime },
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
