@@ -42,7 +42,7 @@ const ErrorCode = iapModule?.ErrorCode ?? {};
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export const IAP_PRODUCTS = {
-  PREMIUM_YEARLY: "com.memoryaisle.premium.yearly",
+  PREMIUM_YEARLY: "com.memoryaisle.premium.yearly001",
 } as const;
 
 const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_YEARLY];

@@ -23,7 +23,7 @@ import {
 // Constants
 // ============================================
 
-const PREMIUM_YEARLY_PRODUCT_ID = 'com.memoryaisle.premium.yearly';
+const PREMIUM_YEARLY_PRODUCT_IDS = ['com.memoryaisle.premium.yearly001', 'com.memoryaisle.premium.yearly'];
 
 // Maximum age for a notification's signedDate before we reject it as a replay (5 minutes)
 const MAX_NOTIFICATION_AGE_MS = 5 * 60 * 1000;
@@ -228,7 +228,7 @@ serve(async (req) => {
             );
           }
 
-          if (productId !== PREMIUM_YEARLY_PRODUCT_ID) {
+          if (!PREMIUM_YEARLY_PRODUCT_IDS.includes(productId)) {
             processingResult = 'ignored';
             processingError = `Unknown product: ${productId}`;
             break;
@@ -265,7 +265,7 @@ serve(async (req) => {
             break;
           }
 
-          if (productId !== PREMIUM_YEARLY_PRODUCT_ID) {
+          if (!PREMIUM_YEARLY_PRODUCT_IDS.includes(productId)) {
             processingResult = 'ignored';
             processingError = `Unknown product: ${productId}`;
             break;
