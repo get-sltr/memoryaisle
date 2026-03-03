@@ -229,6 +229,12 @@ export default function RootLayout() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMountedRef.current) return;
 
+      if (event === "PASSWORD_RECOVERY" && session?.user) {
+        isAuthedRef.current = true;
+        router.replace("/(auth)/reset-password");
+        return;
+      }
+
       if (event === "SIGNED_IN" && session?.user) {
         isAuthedRef.current = true;
         setLoading(true);
