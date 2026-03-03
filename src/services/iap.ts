@@ -72,6 +72,8 @@ export const SUBSCRIPTION_TIERS = {
       smartCalendar: false,
       prioritySupport: false,
       glp1Tracking: false,
+      mealMemories: 5,
+      blogAccess: true,
     },
   },
   premium: {
@@ -94,6 +96,8 @@ export const SUBSCRIPTION_TIERS = {
       smartCalendar: true,
       prioritySupport: true,
       glp1Tracking: true,
+      mealMemories: -1,
+      blogAccess: true,
     },
   },
 } as const;

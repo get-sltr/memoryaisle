@@ -11,6 +11,7 @@ import {
   ImageSourcePropType,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,6 +25,7 @@ import {
 } from '../../src/components/GlassIcons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { supabase } from '../../src/services/supabase';
+import { photoUploadService } from '../../src/services/photoUpload';
 import { ALLERGENS, type AllergenType } from '../../src/utils/allergenDetection';
 import {
   COLORS,
@@ -62,6 +64,59 @@ const ALLERGY_OPTIONS = Object.entries(ALLERGENS).map(([id, info]) => ({
 export default function ProfileScreen() {
   const { user, setUser } = useAuthStore();
   const profile = user?.profile || {};
+
+  // Avatar state
+  const [avatarUrl, setAvatarUrl] = useState<string | null>((user as any)?.avatar_url || profile.avatar || null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const handleChangeAvatar = () => {
+    Alert.alert('Change Photo', 'Choose your profile photo', [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const uri = await photoUploadService.capturePhoto();
+          if (uri) uploadAvatar(uri);
+        },
+      },
+      {
+        text: 'Gallery',
+        onPress: async () => {
+          const uri = await photoUploadService.pickFromGallery(true, [1, 1]);
+          if (uri) uploadAvatar(uri);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const uploadAvatar = async (uri: string) => {
+    if (!user) return;
+    setUploadingAvatar(true);
+    try {
+      const result = await photoUploadService.uploadPhoto(uri, 'profile_photo');
+      if (result.success && result.cdnUrl) {
+        // Save to Supabase users table
+        await supabase
+          .from('users')
+          .update({ avatar_url: result.cdnUrl })
+          .eq('id', user.id);
+
+        setAvatarUrl(result.cdnUrl);
+
+        // Update local profile
+        setUser({
+          ...user,
+          profile: { ...profile, avatar: result.cdnUrl },
+        });
+      } else {
+        Alert.alert('Error', result.error || 'Could not upload photo');
+      }
+    } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   // Form state
   const [nickname, setNickname] = useState(profile.nickname || '');
@@ -190,6 +245,33 @@ export default function ProfileScreen() {
       >
         {/* Personal Info Section */}
         <SectionCard title="About You" icon={PROFILE_ICONS.aboutYou}>
+          {/* Profile Photo */}
+          <Pressable style={styles.avatarContainer} onPress={handleChangeAvatar} disabled={uploadingAvatar}>
+            <View style={styles.avatarWrapper}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <LinearGradient
+                  colors={[COLORS.gold.lightest, COLORS.gold.light]}
+                  style={styles.avatarPlaceholder}
+                >
+                  <Text style={styles.avatarInitial}>
+                    {(profile.nickname || user?.name || user?.email || '?')[0].toUpperCase()}
+                  </Text>
+                </LinearGradient>
+              )}
+              {uploadingAvatar ? (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color="#FFF" />
+                </View>
+              ) : (
+                <View style={styles.avatarBadge}>
+                  <Text style={styles.avatarBadgeText}>📷</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.avatarHint}>Tap to change photo</Text>
+          </Pressable>
           <InputField
             label="Nickname"
             placeholder="What should we call you?"
@@ -711,6 +793,60 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.2)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  avatarContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  avatarWrapper: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.gold.light,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: COLORS.gold.dark,
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.gold.base,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  avatarBadgeText: {
+    fontSize: 13,
+  },
+  avatarHint: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.text.tertiary,
+    marginTop: SPACING.xs,
   },
   bottomPadding: {
     height: 100,

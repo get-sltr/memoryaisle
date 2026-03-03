@@ -645,6 +645,22 @@ export default function SettingsScreen() {
           </SectionCard>
         )}
 
+        {/* Content Section */}
+        <SectionCard title="Content" icon="📸">
+          <SettingRow
+            icon="🖼️"
+            title="Meal Memories"
+            subtitle="Your family food photo journal"
+            onPress={() => router.push('/(app)/meal-memories')}
+          />
+          <SettingRow
+            icon="📖"
+            title="Blog"
+            subtitle="Recipes, tips & stories"
+            onPress={() => router.push('/(app)/blog')}
+          />
+        </SectionCard>
+
         {/* App Section */}
         <SectionCard title="App" icon="📱">
           <SettingRow

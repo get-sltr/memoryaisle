@@ -100,6 +100,16 @@ const FEATURE_MESSAGES: Record<FeatureKey, { title: string; description: string;
     description: 'Cycle-aware meal planning adapted to your GLP-1 medication schedule',
     icon: '💊',
   },
+  mealMemories: {
+    title: 'Unlimited Meal Memories',
+    description: 'Save unlimited food photos and build your family food journal',
+    icon: '📸',
+  },
+  blogAccess: {
+    title: 'Blog & Guides',
+    description: 'Access seasonal recipes, meal prep guides, and holiday planning articles',
+    icon: '📖',
+  },
 };
 
 export function PaywallPrompt({

@@ -837,6 +837,66 @@ export default function MainList() {
                 </View>
               </Pressable>
 
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/(app)/meal-memories');
+                }}
+              >
+                <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                  style={styles.menuItemGradient}
+                />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 0.6 }}
+                  style={styles.menuItemShine}
+                />
+                <View style={styles.menuItemBorder} />
+                <View style={styles.menuItemInner}>
+                  <GlassIconWrapper size={40} variant="gold">
+                    <Text style={{ fontSize: 20 }}>📸</Text>
+                  </GlassIconWrapper>
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemText}>Meal Memories</Text>
+                    <Text style={styles.menuItemSubtext}>Your food photo journal</Text>
+                  </View>
+                </View>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/(app)/blog');
+                }}
+              >
+                <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                  style={styles.menuItemGradient}
+                />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 0.6 }}
+                  style={styles.menuItemShine}
+                />
+                <View style={styles.menuItemBorder} />
+                <View style={styles.menuItemInner}>
+                  <GlassIconWrapper size={40} variant="gold">
+                    <Text style={{ fontSize: 20 }}>📖</Text>
+                  </GlassIconWrapper>
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemText}>Blog</Text>
+                    <Text style={styles.menuItemSubtext}>Recipes, tips & stories</Text>
+                  </View>
+                </View>
+              </Pressable>
+
               <View style={styles.menuDivider} />
 
               {/* Profile Section */}
