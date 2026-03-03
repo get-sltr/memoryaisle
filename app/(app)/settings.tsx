@@ -717,6 +717,24 @@ export default function SettingsScreen() {
             subtitle="Your family recipe collection"
             onPress={() => router.push('/(app)/cookbook')}
           />
+          <SettingRow
+            icon="🎄"
+            title="Holiday Planner"
+            subtitle="Plan holiday feasts & prep timelines"
+            onPress={() => router.push('/(app)/holiday-planner')}
+          />
+          <SettingRow
+            icon="📷"
+            title="Barcode Scanner"
+            subtitle="Scan products into your pantry"
+            onPress={() => router.push('/(app)/barcode-scanner')}
+          />
+          <SettingRow
+            icon="🌍"
+            title="Community Recipes"
+            subtitle="Discover & share recipes"
+            onPress={() => router.push('/(app)/community')}
+          />
         </SectionCard>
 
         {/* App Section */}

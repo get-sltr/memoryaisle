@@ -42,6 +42,9 @@ export default function AppLayout() {
         <Tabs.Screen name="pantry" options={{ title: 'Pantry', href: null }} />
         <Tabs.Screen name="budget" options={{ title: 'Budget', href: null }} />
         <Tabs.Screen name="cookbook" options={{ title: 'Cookbook', href: null }} />
+        <Tabs.Screen name="holiday-planner" options={{ title: 'Holiday Planner', href: null }} />
+        <Tabs.Screen name="barcode-scanner" options={{ title: 'Barcode Scanner', href: null }} />
+        <Tabs.Screen name="community" options={{ title: 'Community', href: null }} />
       </Tabs>
 
       {/* Mira Floating Button - accessible from all screens */}

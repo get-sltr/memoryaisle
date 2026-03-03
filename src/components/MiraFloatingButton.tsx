@@ -23,6 +23,8 @@ import { useAuthStore } from '../stores/authStore';
 import { useGLP1Store } from '../stores/glp1Store';
 import { usePantryStore } from '../stores/pantryStore';
 import { useBudgetStore } from '../stores/budgetStore';
+import { useHolidayPlannerStore } from '../stores/holidayPlannerStore';
+import { holidayPlannerService } from '../services/holidayPlanner';
 import { mira, MiraRecipe, MiraMealPlan } from '../services/mira';
 import { getActiveList, addItem } from '../services/lists';
 import { saveMiraMealPlan } from '../services/mealPlans';
@@ -32,6 +34,7 @@ import { generateMiraGLP1Context, type GLP1Profile } from '../services/glp1Engin
 import { pantryService } from '../services/pantry';
 import { budgetService } from '../services/budget';
 import { cookbookService } from '../services/cookbook';
+import type { HolidayPlan } from '../services/holidayPlanner';
 import { logger } from '../utils/logger';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -53,6 +56,7 @@ export function MiraFloatingButton() {
   const { isActive: glp1Active, profile: glp1Profile, cycleInfo: glp1Cycle } = useGLP1Store();
   const { items: pantryItems } = usePantryStore();
   const { summary: budgetSummary } = useBudgetStore();
+  const { upcomingPlans } = useHolidayPlannerStore();
 
   // Position state - starts at bottom right
   const position = useRef(new Animated.ValueXY({
@@ -236,11 +240,18 @@ export function MiraFloatingButton() {
         budgetContext = budgetService.generateMiraBudgetContext(budgetSummary);
       }
 
+      // Build holiday planner context if upcoming plans exist
+      let holidayContext: string | undefined;
+      if (upcomingPlans.length > 0) {
+        holidayContext = holidayPlannerService.generateMiraHolidayContext(upcomingPlans[0]);
+      }
+
       const response = await mira.processText(inputText.trim(), {
         familyDietaryRestrictions: familyDietaryInfo || undefined,
         glp1Context,
         pantryContext,
         budgetContext,
+        holidayContext,
       });
 
       // Handle adding items to list

@@ -470,6 +470,7 @@ class MiraAssistant {
       glp1Context?: string;
       pantryContext?: string;
       budgetContext?: string;
+      holidayContext?: string;
     }
   ): Promise<MiraChatResponse> {
     try {

@@ -130,6 +130,21 @@ const FEATURE_MESSAGES: Record<FeatureKey, { title: string; description: string;
     description: 'Get personalized weekly summaries with spending, meals, and Mira suggestions',
     icon: '📊',
   },
+  holidayPlanner: {
+    title: 'Holiday Meal Planner',
+    description: 'Plan holiday feasts with menus, prep timelines, shopping lists, and budget tracking',
+    icon: '🎄',
+  },
+  barcodeScanner: {
+    title: 'Barcode Scanner',
+    description: 'Scan product barcodes to quickly add items to your pantry',
+    icon: '📷',
+  },
+  communityRecipes: {
+    title: 'Community Recipes',
+    description: 'Browse and share recipes with the MemoryAisle community',
+    icon: '🌍',
+  },
 };
 
 export function PaywallPrompt({

@@ -38,7 +38,8 @@ export type NotificationType =
   | 'glp1_injection_reminder'
   | 'glp1_daily_checkin'
   | 'glp1_protein_reminder'
-  | 'weekly_digest';
+  | 'weekly_digest'
+  | 'holiday_prep_reminder';
 
 interface ScheduledNotification {
   id: string;
