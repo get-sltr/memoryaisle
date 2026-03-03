@@ -82,8 +82,8 @@ CREATE POLICY "Users can delete household budgets"
 -- Auto-update timestamps (reuse existing trigger function)
 CREATE TRIGGER pantry_items_updated_at
   BEFORE UPDATE ON pantry_items
-  FOR EACH ROW EXECUTE FUNCTION update_glp1_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
 
 CREATE TRIGGER budgets_updated_at
   BEFORE UPDATE ON budgets
-  FOR EACH ROW EXECUTE FUNCTION update_glp1_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION handle_updated_at();

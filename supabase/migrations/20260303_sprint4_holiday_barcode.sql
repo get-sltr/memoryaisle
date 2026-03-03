@@ -72,4 +72,4 @@ CREATE POLICY "Authenticated users can insert scanned products"
 -- Auto-update timestamps
 CREATE TRIGGER holiday_plans_updated_at
   BEFORE UPDATE ON holiday_plans
-  FOR EACH ROW EXECUTE FUNCTION update_glp1_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION handle_updated_at();

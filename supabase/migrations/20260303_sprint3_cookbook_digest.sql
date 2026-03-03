@@ -86,4 +86,4 @@ CREATE POLICY "Service can insert digests"
 -- Auto-update timestamps
 CREATE TRIGGER cookbook_recipes_updated_at
   BEFORE UPDATE ON cookbook_recipes
-  FOR EACH ROW EXECUTE FUNCTION update_glp1_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION handle_updated_at();

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS meal_memories (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   image_url TEXT NOT NULL,                -- S3 CDN URL
   caption TEXT,                           -- user description
-  recipe_id UUID REFERENCES recipes(id) ON DELETE SET NULL,  -- optional link to recipe
+  recipe_id UUID,                        -- optional link to recipe (soft reference)
   meal_plan_id UUID,                      -- optional link to meal plan
   holiday TEXT,                           -- e.g. 'eid_2026', 'thanksgiving_2026', 'christmas_2026'
   tags TEXT[] DEFAULT '{}',               -- user tags: ['dinner', 'baking', 'family']
@@ -82,11 +82,11 @@ CREATE POLICY "Authenticated users can read published posts"
 -- Auto-update timestamps
 CREATE TRIGGER meal_memories_updated_at
   BEFORE UPDATE ON meal_memories
-  FOR EACH ROW EXECUTE FUNCTION update_glp1_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
 
 CREATE TRIGGER blog_posts_updated_at
   BEFORE UPDATE ON blog_posts
-  FOR EACH ROW EXECUTE FUNCTION update_glp1_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION handle_updated_at();
 
 -- Add avatar_url column to users table for profile photos
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
