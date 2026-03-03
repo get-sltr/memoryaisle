@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 // app/_layout.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
 import { View, Platform, Dimensions } from "react-native";
@@ -287,6 +288,56 @@ export default function RootLayout() {
       pendingNotificationRoute.current = null;
     }
   }, [isReady, rootNavigationState?.key, router]);
+
+  
+  // Deep link handler for password reset and auth callbacks
+  useEffect(() => {
+    const handleDeepLink = (event) => {
+      const url = event.url || event;
+      if (!url) return;
+
+      try {
+        const parsed = new URL(url);
+        const hash = parsed.hash ? parsed.hash.substring(1) : '';
+        const hashParams = new URLSearchParams(hash);
+        const searchParams = new URLSearchParams(parsed.search);
+
+        const type = hashParams.get('type') || searchParams.get('type');
+
+        if (type === 'recovery') {
+          // Supabase will fire PASSWORD_RECOVERY via onAuthStateChange
+          // but we also handle it here as a fallback
+          const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token') || searchParams.get('refresh_token');
+
+          if (accessToken) {
+            supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            }).then(() => {
+              router.replace("/(auth)/reset-password");
+            }).catch((err) => {
+              logger.error("Failed to set recovery session", { message: err?.message });
+            });
+          }
+        }
+      } catch (err) {
+        logger.error("Deep link parse error", { message: (err as any)?.message });
+      }
+    };
+
+    // Handle URL that opened the app
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
+    // Handle URLs while app is running
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   if (!isReady) return null;
 
