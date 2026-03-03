@@ -231,6 +231,8 @@ interface ChatRequest {
     recentPurchases?: string[];
     familyDietaryRestrictions?: string;
     glp1Context?: string;
+    pantryContext?: string;
+    budgetContext?: string;
   };
 }
 
@@ -339,6 +341,12 @@ serve(async (req) => {
     }
     if (context?.glp1Context) {
       contextMessage += context.glp1Context;
+    }
+    if (context?.pantryContext) {
+      contextMessage += context.pantryContext;
+    }
+    if (context?.budgetContext) {
+      contextMessage += context.budgetContext;
     }
 
     // Call GPT-4o - Full capability model for comprehensive responses

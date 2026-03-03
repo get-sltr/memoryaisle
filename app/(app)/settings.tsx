@@ -661,6 +661,22 @@ export default function SettingsScreen() {
           />
         </SectionCard>
 
+        {/* Household Tools Section */}
+        <SectionCard title="Household Tools" icon="🏠">
+          <SettingRow
+            icon="🏪"
+            title="Pantry Inventory"
+            subtitle="Track items, expiry dates & auto-restock"
+            onPress={() => router.push('/(app)/pantry')}
+          />
+          <SettingRow
+            icon="💰"
+            title="Smart Budget"
+            subtitle="Grocery spending tracker & analytics"
+            onPress={() => router.push('/(app)/budget')}
+          />
+        </SectionCard>
+
         {/* App Section */}
         <SectionCard title="App" icon="📱">
           <SettingRow

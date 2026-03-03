@@ -897,6 +897,66 @@ export default function MainList() {
                 </View>
               </Pressable>
 
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/(app)/pantry');
+                }}
+              >
+                <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                  style={styles.menuItemGradient}
+                />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 0.6 }}
+                  style={styles.menuItemShine}
+                />
+                <View style={styles.menuItemBorder} />
+                <View style={styles.menuItemInner}>
+                  <GlassIconWrapper size={40} variant="gold">
+                    <Text style={{ fontSize: 20 }}>🏪</Text>
+                  </GlassIconWrapper>
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemText}>Pantry</Text>
+                    <Text style={styles.menuItemSubtext}>Track what you have at home</Text>
+                  </View>
+                </View>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  router.push('/(app)/budget');
+                }}
+              >
+                <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
+                  style={styles.menuItemGradient}
+                />
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 0.6 }}
+                  style={styles.menuItemShine}
+                />
+                <View style={styles.menuItemBorder} />
+                <View style={styles.menuItemInner}>
+                  <GlassIconWrapper size={40} variant="gold">
+                    <Text style={{ fontSize: 20 }}>💰</Text>
+                  </GlassIconWrapper>
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemText}>Budget</Text>
+                    <Text style={styles.menuItemSubtext}>Track grocery spending</Text>
+                  </View>
+                </View>
+              </Pressable>
+
               <View style={styles.menuDivider} />
 
               {/* Profile Section */}

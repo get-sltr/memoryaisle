@@ -468,6 +468,8 @@ class MiraAssistant {
       speakerName?: string;
       familyDietaryRestrictions?: string;
       glp1Context?: string;
+      pantryContext?: string;
+      budgetContext?: string;
     }
   ): Promise<MiraChatResponse> {
     try {

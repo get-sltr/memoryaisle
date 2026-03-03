@@ -74,6 +74,8 @@ export const SUBSCRIPTION_TIERS = {
       glp1Tracking: false,
       mealMemories: 5,
       blogAccess: true,
+      pantryTracking: true,
+      budgetTracking: false,
     },
   },
   premium: {
@@ -98,6 +100,8 @@ export const SUBSCRIPTION_TIERS = {
       glp1Tracking: true,
       mealMemories: -1,
       blogAccess: true,
+      pantryTracking: true,
+      budgetTracking: true,
     },
   },
 } as const;

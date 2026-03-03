@@ -110,6 +110,16 @@ const FEATURE_MESSAGES: Record<FeatureKey, { title: string; description: string;
     description: 'Access seasonal recipes, meal prep guides, and holiday planning articles',
     icon: '📖',
   },
+  pantryTracking: {
+    title: 'Pantry Inventory',
+    description: 'Track what you have at home, get expiry alerts, and auto-restock reminders',
+    icon: '🏪',
+  },
+  budgetTracking: {
+    title: 'Smart Budget Analytics',
+    description: 'Track grocery spending with category breakdowns and monthly trends',
+    icon: '💰',
+  },
 };
 
 export function PaywallPrompt({

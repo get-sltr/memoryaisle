@@ -21,12 +21,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS, HIG } from '../constants/theme';
 import { useAuthStore } from '../stores/authStore';
 import { useGLP1Store } from '../stores/glp1Store';
+import { usePantryStore } from '../stores/pantryStore';
+import { useBudgetStore } from '../stores/budgetStore';
 import { mira, MiraRecipe, MiraMealPlan } from '../services/mira';
 import { getActiveList, addItem } from '../services/lists';
 import { saveMiraMealPlan } from '../services/mealPlans';
 import { SwipeButton } from './SwipeButton';
 import { supabase } from '../services/supabase';
 import { generateMiraGLP1Context, type GLP1Profile } from '../services/glp1Engine';
+import { pantryService } from '../services/pantry';
+import { budgetService } from '../services/budget';
 import { logger } from '../utils/logger';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -46,6 +50,8 @@ export function MiraFloatingButton() {
   const insets = useSafeAreaInsets();
   const { household, user } = useAuthStore();
   const { isActive: glp1Active, profile: glp1Profile, cycleInfo: glp1Cycle } = useGLP1Store();
+  const { items: pantryItems } = usePantryStore();
+  const { summary: budgetSummary } = useBudgetStore();
 
   // Position state - starts at bottom right
   const position = useRef(new Animated.ValueXY({
@@ -217,9 +223,23 @@ export function MiraFloatingButton() {
         glp1Context = generateMiraGLP1Context(profile, glp1Cycle);
       }
 
+      // Build pantry context if items exist
+      let pantryContext: string | undefined;
+      if (pantryItems.length > 0) {
+        pantryContext = pantryService.generateMiraPantryContext(pantryItems);
+      }
+
+      // Build budget context if summary exists
+      let budgetContext: string | undefined;
+      if (budgetSummary) {
+        budgetContext = budgetService.generateMiraBudgetContext(budgetSummary);
+      }
+
       const response = await mira.processText(inputText.trim(), {
         familyDietaryRestrictions: familyDietaryInfo || undefined,
         glp1Context,
+        pantryContext,
+        budgetContext,
       });
 
       // Handle adding items to list
