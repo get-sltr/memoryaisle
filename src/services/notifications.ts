@@ -34,7 +34,10 @@ export type NotificationType =
   | 'meal_plan_ready'
   | 'store_nearby'
   | 'reminder'
-  | 'mira_suggestion';
+  | 'mira_suggestion'
+  | 'glp1_injection_reminder'
+  | 'glp1_daily_checkin'
+  | 'glp1_protein_reminder';
 
 interface ScheduledNotification {
   id: string;
@@ -345,6 +348,73 @@ class NotificationService {
   // Get push token
   getPushToken(): string | null {
     return this.expoPushToken;
+  }
+
+  // ─── GLP-1 Notification Helpers ────────────────────────────
+
+  /**
+   * Schedule weekly injection reminder.
+   * @param injectionDay 0=Sunday..6=Saturday
+   */
+  async scheduleInjectionReminder(injectionDay: number): Promise<string[]> {
+    // expo-notifications uses 1=Sunday..7=Saturday
+    const weekday = injectionDay + 1;
+    return this.scheduleRecurring(
+      {
+        title: 'Injection Day',
+        body: "It's your injection day. Don't forget to log it in MemoryAisle!",
+        data: { type: 'glp1_injection_reminder' },
+      },
+      9, // 9 AM
+      0,
+      [weekday],
+    );
+  }
+
+  /**
+   * Schedule daily check-in reminder at 7 PM every day.
+   */
+  async scheduleDailyCheckinReminder(): Promise<string[]> {
+    return this.scheduleRecurring(
+      {
+        title: 'Daily Check-in',
+        body: 'Quick check-in: How are your appetite and energy today?',
+        data: { type: 'glp1_daily_checkin' },
+      },
+      19, // 7 PM
+      0,
+    );
+  }
+
+  /**
+   * Schedule daily protein reminder at 2 PM.
+   */
+  async scheduleProteinReminder(): Promise<string[]> {
+    return this.scheduleRecurring(
+      {
+        title: 'Protein Check',
+        body: "Have you hit your protein goal today? Aim for at least 60g — it's important on GLP-1 meds.",
+        data: { type: 'glp1_protein_reminder' },
+      },
+      14, // 2 PM
+      0,
+    );
+  }
+
+  /**
+   * Schedule all GLP-1 related notifications.
+   */
+  async scheduleGLP1Notifications(injectionDay?: number | null): Promise<void> {
+    try {
+      if (injectionDay != null) {
+        await this.scheduleInjectionReminder(injectionDay);
+      }
+      await this.scheduleDailyCheckinReminder();
+      await this.scheduleProteinReminder();
+      logger.log('GLP-1 notifications scheduled');
+    } catch (error) {
+      logger.error('Error scheduling GLP-1 notifications:', error);
+    }
   }
 }
 

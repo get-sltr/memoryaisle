@@ -71,6 +71,7 @@ export const SUBSCRIPTION_TIERS = {
       storeGeofencing: 1,
       smartCalendar: false,
       prioritySupport: false,
+      glp1Tracking: false,
     },
   },
   premium: {
@@ -92,6 +93,7 @@ export const SUBSCRIPTION_TIERS = {
       storeGeofencing: -1,
       smartCalendar: true,
       prioritySupport: true,
+      glp1Tracking: true,
     },
   },
 } as const;

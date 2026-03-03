@@ -34,6 +34,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { StoreArrivalBanner } from '../../src/components/StoreArrivalBanner';
 import { MissingItemsAlert } from '../../src/components/MissingItemsAlert';
+import { GLP1DashboardWidget } from '../../src/components/GLP1DashboardWidget';
+import { GLP1DailyCheckin } from '../../src/components/GLP1DailyCheckin';
+import { GLP1InjectionLogger } from '../../src/components/GLP1InjectionLogger';
 import { useAuthStore } from '../../src/stores/authStore';
 import { geofenceService, SavedStore } from '../../src/services/geofence';
 import { signOut } from '../../src/services/auth';
@@ -101,11 +104,14 @@ import {
 } from '../../src/utils/categoryDetection';
 import type { ListItem, GroceryList as GroceryListType } from '../../src/types';
 import { notificationService } from '../../src/services/notifications';
+import { useGLP1Store } from '../../src/stores/glp1Store';
+import { detectFoodTrigger } from '../../src/services/glp1Engine';
 import { logger } from '../../src/utils/logger';
 
 export default function MainList() {
   const { user, household, setUser, setHousehold, isGuest } = useAuthStore();
   const { colors, isDark, toggleTheme, loadTheme } = useThemeStore();
+  const { isActive: glp1Active, profile: glp1Profile } = useGLP1Store();
   const insets = useSafeAreaInsets();
 
   const [list, setList] = useState<GroceryListType | null>(null);
@@ -129,6 +135,8 @@ export default function MainList() {
   const [showListPicker, setShowListPicker] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingPage, setOnboardingPage] = useState(0);
+  const [showGLP1Checkin, setShowGLP1Checkin] = useState(false);
+  const [showGLP1Injection, setShowGLP1Injection] = useState(false);
   const onboardingScrollRef = useRef<ScrollView>(null);
   const ONBOARDING_SLIDE_WIDTH = Math.min(Dimensions.get('window').width - 64, 360);
 
@@ -470,6 +478,17 @@ export default function MainList() {
       return;
     }
 
+    // GLP-1 food trigger warning (non-blocking — just informational)
+    if (glp1Active && glp1Profile?.food_triggers?.length) {
+      const trigger = detectFoodTrigger(itemName, glp1Profile.food_triggers);
+      if (trigger) {
+        Alert.alert(
+          'GLP-1 Food Trigger',
+          `"${itemName}" may be a trigger food (${trigger}). This could cause discomfort on your current medication. Adding it anyway.`,
+        );
+      }
+    }
+
     // Check for duplicates
     if (!skipDuplicateCheck) {
       const duplicate = items.find(
@@ -637,6 +656,16 @@ export default function MainList() {
           <StatCard value={completedItems} label="Done" isGold />
           <StatCard value={familyMembers} label="Family" />
         </View>
+
+        {/* GLP-1 Dashboard Widget — only renders when active */}
+        <GLP1DashboardWidget
+          onCheckin={() => setShowGLP1Checkin(true)}
+          onLogInjection={() => setShowGLP1Injection(true)}
+        />
+
+        {/* GLP-1 Modals */}
+        <GLP1DailyCheckin visible={showGLP1Checkin} onClose={() => setShowGLP1Checkin(false)} />
+        <GLP1InjectionLogger visible={showGLP1Injection} onClose={() => setShowGLP1Injection(false)} />
 
         {/* Menu Modal - Full Screen Frosted Glass */}
         <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>

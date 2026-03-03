@@ -95,6 +95,11 @@ const FEATURE_MESSAGES: Record<FeatureKey, { title: string; description: string;
     description: 'Get fast responses from our support team',
     icon: '💬',
   },
+  glp1Tracking: {
+    title: 'GLP-1 Meal Tracking',
+    description: 'Cycle-aware meal planning adapted to your GLP-1 medication schedule',
+    icon: '💊',
+  },
 };
 
 export function PaywallPrompt({

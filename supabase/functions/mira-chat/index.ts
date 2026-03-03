@@ -46,6 +46,7 @@ INTENTS (detect the primary intent):
 - planning: Help with planning (trips, events - NOT meal planning)
 - conversation: General chat, emotional support, or casual talk
 - glp1_meal_advice: GLP-1 cycle-aware meal or nutrition question (only when user has GLP-1 context)
+- glp1_meal_advice: GLP-1 cycle-aware meal or nutrition question (only when user has GLP-1 context)
 
 RESPONSE FORMAT (JSON only, no markdown):
 

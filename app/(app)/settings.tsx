@@ -27,6 +27,9 @@ import { adminService } from '../../src/services/admin';
 import { useThemeStore } from '../../src/stores/themeStore';
 import { supabase } from '../../src/services/supabase';
 import { SUBSCRIPTION_TIERS } from '../../src/services/iap';
+import { useGLP1Store } from '../../src/stores/glp1Store';
+import { MEDICATIONS } from '../../src/services/glp1Engine';
+import { deactivateGLP1Profile } from '../../src/services/glp1';
 import {
   COLORS,
   FONT_SIZES,
@@ -95,6 +98,7 @@ export default function SettingsScreen() {
   const { user, household, signOut: clearAuthStore } = useAuthStore();
   const { subscription, isPremium, isLoading, product, restorePurchases, refresh } = useSubscription();
   const _theme = useThemeStore(); // keep import active for ScreenWrapper
+  const { isActive: glp1Active, profile: glp1Profile, cycleInfo, cleanup: glp1Cleanup } = useGLP1Store();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -578,6 +582,68 @@ export default function SettingsScreen() {
             danger
           />
         </SectionCard>
+
+        {/* GLP-1 Section — only shows for active profiles or premium users */}
+        {(glp1Active || isPremium) && (
+          <SectionCard title="GLP-1 Tracking" icon="💊">
+            {glp1Active && glp1Profile ? (
+              <>
+                <SettingRow
+                  icon="💉"
+                  title={MEDICATIONS[glp1Profile.medication]?.brand || 'Medication'}
+                  subtitle={`${glp1Profile.dose || 'Dose not set'} • ${glp1Profile.duration.replace(/_/g, ' ')}`}
+                />
+                {cycleInfo && (
+                  <SettingRow
+                    icon={cycleInfo.emoji}
+                    title={`Current Phase: ${cycleInfo.label}`}
+                    subtitle={`Day ${cycleInfo.dayInCycle + 1} of ${cycleInfo.totalCycleDays} • ${Math.round(cycleInfo.portionScale * 100)}% portions`}
+                  />
+                )}
+                <SettingRow
+                  icon="⚙️"
+                  title="Update GLP-1 Profile"
+                  subtitle="Change medication, dose, or triggers"
+                  onPress={() => router.push('/(app)/glp1-setup')}
+                />
+                <SettingRow
+                  icon="🛑"
+                  title="Disable GLP-1 Tracking"
+                  subtitle="Turn off cycle-aware features"
+                  onPress={() => {
+                    Alert.alert(
+                      'Disable GLP-1 Tracking',
+                      'This will turn off all GLP-1 adaptive meal features. Your data will be saved and you can re-enable anytime.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Disable',
+                          style: 'destructive',
+                          onPress: async () => {
+                            if (!user?.id) return;
+                            const result = await deactivateGLP1Profile(user.id);
+                            if (result.success) {
+                              glp1Cleanup();
+                              Alert.alert('Disabled', 'GLP-1 tracking has been turned off.');
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  danger
+                />
+              </>
+            ) : (
+              <SettingRow
+                icon="➕"
+                title="Set Up GLP-1 Tracking"
+                subtitle="Adaptive meal planning for your medication cycle"
+                onPress={() => router.push('/(app)/glp1-setup')}
+              />
+            )}
+          </SectionCard>
+        )}
 
         {/* App Section */}
         <SectionCard title="App" icon="📱">

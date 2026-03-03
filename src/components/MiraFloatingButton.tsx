@@ -20,11 +20,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS, HIG } from '../constants/theme';
 import { useAuthStore } from '../stores/authStore';
+import { useGLP1Store } from '../stores/glp1Store';
 import { mira, MiraRecipe, MiraMealPlan } from '../services/mira';
 import { getActiveList, addItem } from '../services/lists';
 import { saveMiraMealPlan } from '../services/mealPlans';
 import { SwipeButton } from './SwipeButton';
 import { supabase } from '../services/supabase';
+import { generateMiraGLP1Context, type GLP1Profile } from '../services/glp1Engine';
 import { logger } from '../utils/logger';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -43,6 +45,7 @@ interface Message {
 export function MiraFloatingButton() {
   const insets = useSafeAreaInsets();
   const { household, user } = useAuthStore();
+  const { isActive: glp1Active, profile: glp1Profile, cycleInfo: glp1Cycle } = useGLP1Store();
 
   // Position state - starts at bottom right
   const position = useRef(new Animated.ValueXY({
@@ -201,8 +204,22 @@ export function MiraFloatingButton() {
     setIsLoading(true);
 
     try {
+      // Build GLP-1 context if user has active profile
+      let glp1Context: string | undefined;
+      if (glp1Active && glp1Profile && glp1Cycle) {
+        const profile: GLP1Profile = {
+          medication: glp1Profile.medication,
+          dose: glp1Profile.dose,
+          injection_day: glp1Profile.injection_day,
+          duration: glp1Profile.duration,
+          food_triggers: glp1Profile.food_triggers,
+        };
+        glp1Context = generateMiraGLP1Context(profile, glp1Cycle);
+      }
+
       const response = await mira.processText(inputText.trim(), {
         familyDietaryRestrictions: familyDietaryInfo || undefined,
+        glp1Context,
       });
 
       // Handle adding items to list
