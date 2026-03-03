@@ -76,6 +76,8 @@ export const SUBSCRIPTION_TIERS = {
       blogAccess: true,
       pantryTracking: true,
       budgetTracking: false,
+      familyCookbook: 10,
+      weeklyDigest: false,
     },
   },
   premium: {
@@ -102,6 +104,8 @@ export const SUBSCRIPTION_TIERS = {
       blogAccess: true,
       pantryTracking: true,
       budgetTracking: true,
+      familyCookbook: -1,
+      weeklyDigest: true,
     },
   },
 } as const;

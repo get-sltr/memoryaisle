@@ -107,6 +107,7 @@ export default function SettingsScreen() {
   const [notificationStatus, setNotificationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
   const [saveMiraHistory, setSaveMiraHistory] = useState(true);
   const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
 
   // Load Mira history preference from Supabase
   useEffect(() => {
@@ -121,6 +122,9 @@ export default function SettingsScreen() {
 
       if (data?.profile?.save_mira_history !== undefined) {
         setSaveMiraHistory(data.profile.save_mira_history);
+      }
+      if (data?.profile?.weekly_digest !== undefined) {
+        setWeeklyDigestEnabled(data.profile.weekly_digest);
       }
     };
 
@@ -157,6 +161,38 @@ export default function SettingsScreen() {
     } catch {
       // Revert the toggle on failure
       setSaveMiraHistory(previousValue);
+    }
+  };
+
+  // Handle weekly digest toggle
+  const handleWeeklyDigestToggle = async (value: boolean) => {
+    if (!user?.id) return;
+
+    const previousValue = weeklyDigestEnabled;
+    setWeeklyDigestEnabled(value);
+
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('profile')
+        .eq('id', user.id)
+        .single();
+
+      const currentProfile = userData?.profile || {};
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          profile: {
+            ...currentProfile,
+            weekly_digest: value,
+          },
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+    } catch {
+      setWeeklyDigestEnabled(previousValue);
     }
   };
 
@@ -675,6 +711,12 @@ export default function SettingsScreen() {
             subtitle="Grocery spending tracker & analytics"
             onPress={() => router.push('/(app)/budget')}
           />
+          <SettingRow
+            icon="📖"
+            title="Family Cookbook"
+            subtitle="Your family recipe collection"
+            onPress={() => router.push('/(app)/cookbook')}
+          />
         </SectionCard>
 
         {/* App Section */}
@@ -691,6 +733,21 @@ export default function SettingsScreen() {
             }
             onPress={handleNotifications}
           />
+          <View style={styles.settingRow}>
+            <Text style={styles.settingIcon}>📊</Text>
+            <View style={styles.settingContent}>
+              <Text style={styles.settingTitle}>Weekly Digest</Text>
+              <Text style={styles.settingSubtitle}>
+                Receive a weekly summary with spending, meals, and Mira suggestions
+              </Text>
+            </View>
+            <Switch
+              value={weeklyDigestEnabled}
+              onValueChange={handleWeeklyDigestToggle}
+              trackColor={{ false: COLORS.platinum.base, true: COLORS.gold.light }}
+              thumbColor={weeklyDigestEnabled ? COLORS.gold.base : COLORS.platinum.dark}
+            />
+          </View>
           {/* Dark mode disabled for now — light mode only */}
         </SectionCard>
 

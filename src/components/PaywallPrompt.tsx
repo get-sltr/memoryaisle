@@ -120,6 +120,16 @@ const FEATURE_MESSAGES: Record<FeatureKey, { title: string; description: string;
     description: 'Track grocery spending with category breakdowns and monthly trends',
     icon: '💰',
   },
+  familyCookbook: {
+    title: 'Unlimited Cookbook Recipes',
+    description: 'Save unlimited family recipes and Mira creations to your digital cookbook',
+    icon: '📖',
+  },
+  weeklyDigest: {
+    title: 'Weekly Digest',
+    description: 'Get personalized weekly summaries with spending, meals, and Mira suggestions',
+    icon: '📊',
+  },
 };
 
 export function PaywallPrompt({

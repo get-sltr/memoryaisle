@@ -37,7 +37,8 @@ export type NotificationType =
   | 'mira_suggestion'
   | 'glp1_injection_reminder'
   | 'glp1_daily_checkin'
-  | 'glp1_protein_reminder';
+  | 'glp1_protein_reminder'
+  | 'weekly_digest';
 
 interface ScheduledNotification {
   id: string;

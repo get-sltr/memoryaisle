@@ -292,7 +292,7 @@ export default function RootLayout() {
   
   // Deep link handler for password reset and auth callbacks
   useEffect(() => {
-    const handleDeepLink = (event) => {
+    const handleDeepLink = (event: any) => {
       const url = event.url || event;
       if (!url) return;
 

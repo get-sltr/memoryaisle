@@ -31,6 +31,7 @@ import { supabase } from '../services/supabase';
 import { generateMiraGLP1Context, type GLP1Profile } from '../services/glp1Engine';
 import { pantryService } from '../services/pantry';
 import { budgetService } from '../services/budget';
+import { cookbookService } from '../services/cookbook';
 import { logger } from '../utils/logger';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -290,6 +291,25 @@ export function MiraFloatingButton() {
     }]);
   }, [household?.id]);
 
+  const handleSaveToCookbook = useCallback(async (recipe: MiraRecipe) => {
+    if (!household?.id) return;
+
+    const result = await cookbookService.saveFromMira(household.id, recipe, user?.id);
+    if (result.success) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Saved "${recipe.name}" to your Family Cookbook! You can find it in the Cookbook section.`,
+      }]);
+    } else {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Sorry, I couldn't save that recipe. Please try again.`,
+      }]);
+    }
+  }, [household?.id, user?.id]);
+
   const handleAddMealPlanToList = useCallback(async (mealPlan: MiraMealPlan) => {
     if (!household?.id) return;
 
@@ -474,6 +494,13 @@ export function MiraFloatingButton() {
                         label="Add Ingredients"
                         completedLabel="Added to List!"
                         icon="✓"
+                      />
+
+                      <SwipeButton
+                        onSwipeComplete={() => handleSaveToCookbook(message.recipe!)}
+                        label="Save to Cookbook"
+                        completedLabel="Saved!"
+                        icon="📖"
                       />
                     </View>
                   )}
