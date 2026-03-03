@@ -45,6 +45,7 @@ INTENTS (detect the primary intent):
 - question: Asking a factual question
 - planning: Help with planning (trips, events - NOT meal planning)
 - conversation: General chat, emotional support, or casual talk
+- glp1_meal_advice: GLP-1 cycle-aware meal or nutrition question (only when user has GLP-1 context)
 
 RESPONSE FORMAT (JSON only, no markdown):
 
@@ -228,6 +229,7 @@ interface ChatRequest {
     currentListItems?: string[];
     recentPurchases?: string[];
     familyDietaryRestrictions?: string;
+    glp1Context?: string;
   };
 }
 
@@ -333,6 +335,9 @@ serve(async (req) => {
       contextMessage += `\n\nIf suggesting recipes or shopping lists, ALWAYS respect these restrictions. Suggest alternatives when needed.`;
       contextMessage += `\nToday's date: ${new Date().toISOString().split('T')[0]}`;
       contextMessage += `\nUse this date to determine if seasonal dietary events are active (Ramadan, Passover, Lent, Navratri, etc.) and proactively mention relevant suggestions.`;
+    }
+    if (context?.glp1Context) {
+      contextMessage += context.glp1Context;
     }
 
     // Call GPT-4o - Full capability model for comprehensive responses

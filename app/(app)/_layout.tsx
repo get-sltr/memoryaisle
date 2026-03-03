@@ -36,6 +36,7 @@ export default function AppLayout() {
         <Tabs.Screen name="privacy" options={{ title: 'Privacy', href: null }} />
         <Tabs.Screen name="terms" options={{ title: 'Terms', href: null }} />
         <Tabs.Screen name="order-detail" options={{ title: 'Order Detail', href: null }} />
+        <Tabs.Screen name="glp1-setup" options={{ title: 'GLP-1 Setup', href: null }} />
       </Tabs>
 
       {/* Mira Floating Button - accessible from all screens */}
