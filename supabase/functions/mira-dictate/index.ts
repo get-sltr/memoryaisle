@@ -92,7 +92,7 @@ serve(async (req) => {
         messages: [
           { role: 'user', content: FAST_PARSE_PROMPT + transcription }
         ],
-        temperature: 0.1, // Very low for consistent parsing
+        temperature: 0.1,
         max_tokens: 200,
         response_format: { type: 'json_object' },
       }),

@@ -343,13 +343,13 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: MIRA_SYSTEM_PROMPT },
           ...(contextMessage ? [{ role: 'system', content: `Context:${contextMessage}` }] : []),
           { role: 'user', content: text },
         ],
-        temperature: 0.7, // Slightly more creative for conversational responses
+        temperature: 0.7,
         max_tokens: 8000, // Large token limit for comprehensive meal plans
         response_format: { type: 'json_object' },
       }),

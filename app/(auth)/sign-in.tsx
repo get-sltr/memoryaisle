@@ -282,28 +282,6 @@ export default function SignIn() {
                 </View>
               </Pressable>
 
-              {/* Sign in with Google */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.googleButton,
-                  pressed && styles.buttonPressed,
-                  oauthLoading === 'google' && styles.buttonDisabled,
-                ]}
-                onPress={() => handleOAuthSignIn('google')}
-                disabled={loading || oauthLoading !== null}
-              >
-                <View style={styles.googleButtonContent}>
-                  {oauthLoading === 'google' ? (
-                    <ActivityIndicator size="small" color={COLORS.text.primary} />
-                  ) : (
-                    <>
-                      <GoogleLogo size={18} />
-                      <Text style={styles.googleButtonText}>Sign in with Google</Text>
-                    </>
-                  )}
-                </View>
-              </Pressable>
-
               {/* Sign in with Facebook */}
               <Pressable
                 style={({ pressed }) => [

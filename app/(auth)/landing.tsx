@@ -415,28 +415,6 @@ export default function LandingScreen() {
             </View>
           </Pressable>
 
-          {/* Google Sign In */}
-          <Pressable
-            onPress={() => handleSocialSignIn('google')}
-            disabled={isLoading !== null}
-            style={({ pressed }) => [
-              styles.googleSignInButton,
-              pressed && styles.buttonPressed,
-              isLoading === 'google' && styles.buttonLoading,
-            ]}
-          >
-            <View style={styles.googleSignInInner}>
-              {isLoading === 'google' ? (
-                <ActivityIndicator size="small" color={COLORS.text.primary} />
-              ) : (
-                <>
-                  <GoogleLogo size={18} />
-                  <Text style={styles.googleSignInText}>Sign in with Google</Text>
-                </>
-              )}
-            </View>
-          </Pressable>
-
           {/* Facebook Sign In */}
           <Pressable
             onPress={() => handleSocialSignIn('facebook')}
