@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS cookbook_recipes (
   dietary_tags TEXT[] DEFAULT '{}',                -- 'vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher'
   photo_urls TEXT[] DEFAULT '{}',                  -- S3/CloudFront URLs from meal memories
   source TEXT DEFAULT 'manual',                    -- 'manual', 'mira', 'import'
-  source_memory_id UUID REFERENCES meal_memories(id) ON DELETE SET NULL,
+  source_memory_id UUID,                             -- optional link to meal_memories
   is_favorite BOOLEAN DEFAULT FALSE,
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
