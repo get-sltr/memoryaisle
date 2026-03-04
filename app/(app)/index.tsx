@@ -1259,39 +1259,6 @@ export default function MainList() {
                 </View>
               </Pressable>
 
-              {/* Theme Toggle */}
-              <Pressable
-                style={styles.menuItem}
-                onPress={() => {
-                  toggleTheme();
-                }}
-              >
-                <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
-                <LinearGradient
-                  colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
-                  style={styles.menuItemGradient}
-                />
-                <LinearGradient
-                  colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 0.6 }}
-                  style={styles.menuItemShine}
-                />
-                <View style={styles.menuItemBorder} />
-                <View style={styles.menuItemInner}>
-                  <GlassIconWrapper size={40} variant="gold">
-                    {isDark ? <SunIcon size={22} /> : <MoonIcon size={22} />}
-                  </GlassIconWrapper>
-                  <View style={styles.menuItemContent}>
-                    <Text style={styles.menuItemText}>{isDark ? 'Light Mode' : 'Dark Mode'}</Text>
-                    <Text style={styles.menuItemSubtext}>Switch appearance</Text>
-                  </View>
-                </View>
-              </Pressable>
-
-              <View style={styles.menuDivider} />
-
-              <Pressable
                 style={styles.menuItem}
                 onPress={() => {
                   setShowMenu(false);
