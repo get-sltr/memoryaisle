@@ -1259,6 +1259,7 @@ export default function MainList() {
                 </View>
               </Pressable>
 
+              <Pressable
                 style={styles.menuItem}
                 onPress={() => {
                   setShowMenu(false);
