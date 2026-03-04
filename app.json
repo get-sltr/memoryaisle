@@ -14,6 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "55",
       "bundleIdentifier": "com.memoryaisle.app",
       "infoPlist": {
         "UIBackgroundModes": [
