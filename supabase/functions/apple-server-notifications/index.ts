@@ -23,7 +23,7 @@ import {
 // Constants
 // ============================================
 
-const PREMIUM_PRODUCT_IDS = ['com.memoryaisle.premium.monthly002', 'com.memoryaisle.premium.yearly001', 'com.memoryaisle.premium.yearly'];
+const PREMIUM_PRODUCT_IDS = ['com.memoryaisle.premium.MAPROMONTHLY1'];
 
 // Maximum age for a notification's signedDate before we reject it as stale.
 // Apple retries over 24h, so we accept up to 48h to avoid missing legitimate retries.

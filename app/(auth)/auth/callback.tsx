@@ -158,6 +158,15 @@ export default function AuthCallbackScreen() {
         }
 
         if (code && returnedUrl) {
+          // Listen for auth event to detect PASSWORD_RECOVERY (PKCE password resets
+          // don't include type=recovery in the URL — the event fires after code exchange).
+          let isRecoveryExchange = false;
+          const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "PASSWORD_RECOVERY") {
+              isRecoveryExchange = true;
+            }
+          });
+
           // Acquire exchange lock — prevents double exchange across rerenders / races
           if (oauthState.tryExchange()) {
             const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(returnedUrl);
@@ -166,6 +175,16 @@ export default function AuthCallbackScreen() {
               // If something else already exchanged, session might still exist
               logger.error("PKCE exchange failed", { message: exchangeErr.message });
             }
+          }
+
+          // Clean up the temporary listener
+          authSub.unsubscribe();
+
+          // If this was a password recovery exchange, let _layout.tsx's
+          // PASSWORD_RECOVERY handler navigate to the reset-password screen.
+          if (isRecoveryExchange) {
+            logger.info("PKCE recovery exchange detected — deferring to PASSWORD_RECOVERY handler");
+            return;
           }
 
           // Wait briefly for session persistence
@@ -225,8 +244,8 @@ export default function AuthCallbackScreen() {
   const handleResetPassword = async () => {
     setError("");
 
-    if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     if (newPassword !== confirmPassword) {
