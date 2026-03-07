@@ -27,14 +27,13 @@ const purchaseUpdatedListener =
 const purchaseErrorListener =
   iapModule?.purchaseErrorListener ?? (() => ({ remove: () => {} }));
 
-// Compatibility helpers (react-native-iap versions differ)
-const getSubscriptions =
-  iapModule?.getSubscriptions ??
+const fetchProducts =
   iapModule?.fetchProducts ??
+  iapModule?.getSubscriptions ??
   (async (_args: any) => []);
-const requestSubscription =
-  iapModule?.requestSubscription ??
+const requestPurchase =
   iapModule?.requestPurchase ??
+  iapModule?.requestSubscription ??
   (async (_args: any) => {});
 
 const ErrorCode = iapModule?.ErrorCode ?? {};
@@ -229,6 +228,7 @@ async function verifyWithServer(purchase: Purchase): Promise<boolean> {
 class IAPService {
   private initialized = false;
   private initializing: Promise<boolean> | null = null;
+  private hasConnectedBefore = false;
 
   private observerActive = false;
   private purchaseUpdateSub: EventSubscription | null = null;
@@ -270,13 +270,16 @@ class IAPService {
 
   private async _doInitialize(): Promise<boolean> {
     try {
-      try { await endConnection(); } catch {}
+      if (this.hasConnectedBefore) {
+        try { await endConnection(); } catch {}
+      }
 
       const isIPad = (Platform as any).isPad || Dimensions.get("window").width >= 768;
       await delay(isIPad ? 1500 : 300);
 
       await initConnection();
       this.initialized = true;
+      this.hasConnectedBefore = true;
 
       this.setupGlobalTransactionObserver();
 
@@ -289,12 +292,31 @@ class IAPService {
     }
   }
 
-  private async safeInitialize(retries = 2): Promise<boolean> {
+  private async safeInitialize(retries = 3): Promise<boolean> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       if (await this.initialize()) return true;
-      await delay(300 * attempt);
+      await delay(500 * attempt);
     }
     return false;
+  }
+
+  private async fetchProductsWithRetry(maxAttempts = 3): Promise<any[]> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const products = await fetchProducts({ skus: SUBSCRIPTION_SKUS, type: "subs" });
+        if (products?.length) return products;
+      } catch (e: any) {
+        logger.warn("IAP: fetchProducts attempt failed", {
+          attempt,
+          message: e?.message,
+        });
+      }
+
+      if (attempt < maxAttempts) {
+        await delay(800 * attempt);
+      }
+    }
+    return [];
   }
 
   private setupGlobalTransactionObserver(): void {
@@ -352,11 +374,16 @@ class IAPService {
   }
 
   async getSubscriptionProduct(): Promise<IAPProduct | null> {
-    if (!(await this.safeInitialize(2))) return null;
+    if (!(await this.safeInitialize(3))) return null;
 
     try {
-      const products = await getSubscriptions({ skus: SUBSCRIPTION_SKUS, type: "subs" });
-      if (!products?.length) return null;
+      const products = await this.fetchProductsWithRetry(3);
+      if (!products?.length) {
+        logger.warn("IAP: No products returned for SKUs", {
+          skus: SUBSCRIPTION_SKUS,
+        });
+        return null;
+      }
 
       const p = products[0];
       return {
@@ -374,8 +401,8 @@ class IAPService {
   }
 
   async purchaseSubscription(): Promise<PurchaseResult> {
-    if (!(await this.safeInitialize(2))) {
-      return { status: "error", message: "Could not connect to the App Store." };
+    if (!(await this.safeInitialize(3))) {
+      return { status: "error", message: "Could not connect to the App Store. Please check your internet connection and try again." };
     }
     if (!this.observerActive) this.setupGlobalTransactionObserver();
 
@@ -384,9 +411,15 @@ class IAPService {
     }
 
     try {
-      const products = await getSubscriptions({ skus: SUBSCRIPTION_SKUS, type: "subs" });
+      const products = await this.fetchProductsWithRetry(4);
       if (!products?.length) {
-        return { status: "error", message: "Subscription product not available." };
+        logger.error("IAP: No products found after retries", {
+          skus: SUBSCRIPTION_SKUS,
+        });
+        return {
+          status: "error",
+          message: "Unable to load subscription. Please close the app completely and try again.",
+        };
       }
 
       this.purchaseInFlight = true;
@@ -398,19 +431,16 @@ class IAPService {
           if (this.purchaseResolver === resolve) {
             this.purchaseResolver = null;
             this.purchaseInFlight = false;
-            resolve({ status: "error", message: "Purchase timed out." });
+            resolve({ status: "error", message: "Purchase timed out. Please try again." });
           }
         }, 120_000);
       });
 
-      // Compatibility call: requestSubscription if available, else requestPurchase
-      await requestSubscription({
-        request:
-          Platform.OS === "ios"
-            ? { apple: { sku: IAP_PRODUCTS.PREMIUM_MONTHLY } }
-            : { google: { skus: [IAP_PRODUCTS.PREMIUM_MONTHLY] } },
+      await requestPurchase({
+        request: {
+          apple: { sku: IAP_PRODUCTS.PREMIUM_MONTHLY },
+        },
         type: "subs",
-        sku: IAP_PRODUCTS.PREMIUM_MONTHLY, // some versions use sku directly
       });
 
       return resultPromise;
@@ -422,12 +452,12 @@ class IAPService {
       if (isCancelCode(code)) return { status: "cancelled" };
 
       logger.error("IAP: Purchase request failed", { message: e?.message, code });
-      return { status: "error", message: "Could not start purchase." };
+      return { status: "error", message: "Could not start purchase. Please try again." };
     }
   }
 
   async restorePurchases(): Promise<boolean> {
-    if (!(await this.safeInitialize(2))) return false;
+    if (!(await this.safeInitialize(3))) return false;
 
     try {
       // Some versions need an explicit restore call on iOS
@@ -578,6 +608,7 @@ class IAPService {
     if (this.initialized) {
       try { await endConnection(); } catch {}
       this.initialized = false;
+      this.hasConnectedBefore = false;
     }
   }
 

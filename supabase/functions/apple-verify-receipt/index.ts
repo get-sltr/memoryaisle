@@ -275,15 +275,15 @@ Deno.serve(async (req) => {
  * Extend this when adding monthly or other plans.
  */
 function deriveBillingInterval(productId: string): string {
-  if (productId.includes('yearly') || productId.includes('annual')) {
+  const lower = productId.toLowerCase();
+  if (lower.includes('yearly') || lower.includes('annual')) {
     return 'year';
   }
-  if (productId.includes('monthly')) {
+  if (lower.includes('monthly')) {
     return 'month';
   }
-  if (productId.includes('weekly')) {
+  if (lower.includes('weekly')) {
     return 'week';
   }
-  // Default to month for current single-product setup
   return 'month';
 }
