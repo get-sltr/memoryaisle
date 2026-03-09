@@ -67,8 +67,6 @@ import { useThemeStore } from '../../src/stores/themeStore';
 import {
   VoiceIcon,
   FamilyIcon,
-  SunIcon,
-  MoonIcon,
 } from '../../src/components/icons';
 import {
   FamilyGlassIcon,
@@ -105,7 +103,7 @@ import { logger } from '../../src/utils/logger';
 
 export default function MainList() {
   const { user, household, setUser, setHousehold, isGuest } = useAuthStore();
-  const { colors, isDark, toggleTheme, loadTheme } = useThemeStore();
+  const { colors, loadTheme } = useThemeStore();
   const insets = useSafeAreaInsets();
 
   const [list, setList] = useState<GroceryListType | null>(null);
@@ -211,10 +209,10 @@ export default function MainList() {
     loadTheme();
     preloadKeywords().then(() => {
       setKeywordsReady(true);
-    });
+    }).catch(() => {});
     AsyncStorage.getItem('hasSeenOnboarding').then((value) => {
       if (!value) setShowOnboarding(true);
-    });
+    }).catch(() => {});
   }, []);
 
   // Refs for wake word callback to avoid re-creating the listener
@@ -986,36 +984,6 @@ export default function MainList() {
                   <View style={styles.menuItemContent}>
                     <Text style={styles.menuItemText}>Save Store Location</Text>
                     <Text style={styles.menuItemSubtext}>Auto-surface your list</Text>
-                  </View>
-                </View>
-              </Pressable>
-
-              {/* Theme Toggle */}
-              <Pressable
-                style={styles.menuItem}
-                onPress={() => {
-                  toggleTheme();
-                }}
-              >
-                <BlurView intensity={25} tint="light" style={styles.menuItemBlur} />
-                <LinearGradient
-                  colors={['rgba(255, 255, 255, 0.65)', 'rgba(250, 248, 245, 0.45)', 'rgba(245, 242, 235, 0.35)']}
-                  style={styles.menuItemGradient}
-                />
-                <LinearGradient
-                  colors={['rgba(255, 255, 255, 0.4)', 'transparent']}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 0.6 }}
-                  style={styles.menuItemShine}
-                />
-                <View style={styles.menuItemBorder} />
-                <View style={styles.menuItemInner}>
-                  <GlassIconWrapper size={40} variant="gold">
-                    {isDark ? <SunIcon size={22} /> : <MoonIcon size={22} />}
-                  </GlassIconWrapper>
-                  <View style={styles.menuItemContent}>
-                    <Text style={styles.menuItemText}>{isDark ? 'Light Mode' : 'Dark Mode'}</Text>
-                    <Text style={styles.menuItemSubtext}>Switch appearance</Text>
                   </View>
                 </View>
               </Pressable>

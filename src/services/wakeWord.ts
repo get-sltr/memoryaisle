@@ -3,6 +3,7 @@
 // All audio processing happens locally — no data leaves the device
 
 import { useCallback, useRef, useState } from 'react';
+import Constants from 'expo-constants';
 import { logger } from '../utils/logger';
 
 // Guard native module import — crashes in Expo Go where NitroModules aren't available
@@ -16,10 +17,9 @@ try {
 type WakeWordCallback = () => void;
 type ErrorCallback = (error: Error) => void;
 
-// Model configuration
 const WAKE_WORD_CONFIG = {
   id: 'hey_mira',
-  modelName: 'hey_mira.onnx', // Placeholder — replace with actual model from DaVoice
+  modelName: 'hey_mira.onnx',
   threshold: 0.9999,
   bufferCnt: 3,
   sticky: false,
@@ -51,10 +51,16 @@ export function useWakeWord() {
         errorCallbackRef.current = onError ?? null;
         isPausedRef.current = false;
 
+        const licenseKey = (Constants.expoConfig?.extra as any)?.davoiceLicenseKey;
+        if (licenseKey) {
+          setKeywordDetectionLicense(licenseKey);
+          logger.info('DaVoice license key applied');
+        }
+
         loadModel(
           [WAKE_WORD_CONFIG],
           async (phraseDetected: string) => {
-            if (isPausedRef.current) return; // Ignore detections while paused
+            if (isPausedRef.current) return;
             logger.info('Wake word detected:', phraseDetected);
             callbackRef.current?.();
           }
@@ -69,7 +75,7 @@ export function useWakeWord() {
         return false;
       }
     },
-    [loadModel]
+    [loadModel, setKeywordDetectionLicense]
   );
 
   const stopWakeWord = useCallback(() => {

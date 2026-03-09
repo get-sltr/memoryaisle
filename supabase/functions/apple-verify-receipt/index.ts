@@ -14,7 +14,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 import { getCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
-const VALID_PRODUCT_IDS = ['com.memoryaisle.premium.MAPROMONTHLY1'];
+const VALID_PRODUCT_IDS = ['com.memoryaisle.premium.MOSUB2'];
 
 // Maximum request body size (50KB — more than enough for purchase data)
 const MAX_BODY_SIZE = 50_000;

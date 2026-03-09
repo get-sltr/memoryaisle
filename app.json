@@ -14,11 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "55",
+      "buildNumber": "58",
       "bundleIdentifier": "com.memoryaisle.app",
       "infoPlist": {
         "UIBackgroundModes": [
-          "location",
           "fetch"
         ],
         "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns.",
@@ -62,7 +61,7 @@
           "locationAlwaysAndWhenInUsePermission": "MemoryAisle needs background location access to alert you when you arrive at a saved grocery store so you don't forget your shopping list.",
           "locationAlwaysPermission": "MemoryAisle needs background location access to alert you when you arrive at a saved grocery store so you don't forget your shopping list.",
           "locationWhenInUsePermission": "MemoryAisle uses your location to help you save the grocery stores you are currently visiting.",
-          "isIosBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
@@ -76,7 +75,9 @@
             "minSdkVersion": 24
           }
         }
-      ]
+      ],
+      "react-native-wakeword",
+      "./plugins/withWakeWordModel"
     ],
     "extra": {
       "router": {},

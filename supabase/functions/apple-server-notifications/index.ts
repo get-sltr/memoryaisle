@@ -23,7 +23,7 @@ import {
 // Constants
 // ============================================
 
-const PREMIUM_PRODUCT_IDS = ['com.memoryaisle.premium.MAPROMONTHLY1'];
+const PREMIUM_PRODUCT_IDS = ['com.memoryaisle.premium.MOSUB2'];
 
 // Maximum age for a notification's signedDate before we reject it as stale.
 // Apple retries over 24h, so we accept up to 48h to avoid missing legitimate retries.
@@ -501,7 +501,13 @@ serve(async (req) => {
       processing_error: processingError,
     });
 
-    // Apple expects 200 to acknowledge receipt
+    if (processingResult === 'error') {
+      return new Response(
+        JSON.stringify({ ok: false, error: processingError }),
+        { status: 500 },
+      );
+    }
+
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   } catch (error) {
     console.error(JSON.stringify({

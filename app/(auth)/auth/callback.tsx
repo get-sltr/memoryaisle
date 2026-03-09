@@ -229,7 +229,7 @@ export default function AuthCallbackScreen() {
     };
 
     // Cold boot
-    Linking.getInitialURL().then(handleUrl);
+    Linking.getInitialURL().then(handleUrl).catch(() => {});
 
     // Warm boot
     const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));

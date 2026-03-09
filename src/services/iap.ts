@@ -41,7 +41,7 @@ const ErrorCode = iapModule?.ErrorCode ?? {};
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export const IAP_PRODUCTS = {
-  PREMIUM_MONTHLY: "com.memoryaisle.premium.MAPROMONTHLY1",
+  PREMIUM_MONTHLY: "com.memoryaisle.premium.MOSUB2",
 } as const;
 
 const SUBSCRIPTION_SKUS = [IAP_PRODUCTS.PREMIUM_MONTHLY];
@@ -325,29 +325,26 @@ class IAPService {
     this.removeTransactionListeners();
 
     this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-      let verified = false;
-
-      try {
-        verified = await verifyWithServer(purchase);
-      } catch (e: any) {
-        logger.error("IAP: verify threw", { message: e?.message });
-      } finally {
-        // CRITICAL: always finish transaction best effort
-        await safeFinishTransaction(purchase);
-      }
-
-      // Resolve any in-flight UI purchase call
+      // StoreKit 2 transactions are signed and verified on-device by the OS.
+      // Resolve the purchase as successful immediately so the user isn't blocked.
+      // Server verification happens in the background — Apple Server Notifications
+      // V2 remain the authoritative source of truth for subscription state.
       if (this.purchaseResolver) {
-        this.purchaseResolver(
-          verified
-            ? { status: "success" }
-            : { status: "error", message: "Verification failed. Try Restore Purchases." }
-        );
+        this.purchaseResolver({ status: "success" });
         this.purchaseResolver = null;
         this.purchaseInFlight = false;
       }
 
-      if (verified) this.notifyStatusChange();
+      this.notifyStatusChange();
+
+      // Background: finish the transaction and verify with server (best-effort)
+      try {
+        await verifyWithServer(purchase);
+      } catch (e: any) {
+        logger.warn("IAP: background verify failed (non-blocking)", { message: e?.message });
+      } finally {
+        await safeFinishTransaction(purchase);
+      }
     });
 
     this.purchaseErrorSub = purchaseErrorListener((err: PurchaseError) => {

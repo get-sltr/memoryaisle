@@ -25,6 +25,10 @@
   ],
   "rewrites": [
     {
+      "source": "/blog/:slug",
+      "destination": "/blog/$1.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/$1.html"
     }

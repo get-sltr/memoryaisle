@@ -2,7 +2,8 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// Add .ppn files to asset extensions for Porcupine wake word models
+// Add custom asset extensions for wake word models
 config.resolver.assetExts.push('ppn');
+config.resolver.assetExts.push('onnx');
 
 module.exports = config;

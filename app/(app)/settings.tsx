@@ -197,7 +197,7 @@ export default function SettingsScreen() {
   }, []);
 
   useEffect(() => {
-    adminService.isAdmin().then(setIsAdmin);
+    adminService.isAdmin().then(setIsAdmin).catch(() => setIsAdmin(false));
     checkNotificationStatus();
 
     const appStateSub = AppState.addEventListener('change', (nextAppState) => {

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://memoryaisle.app/sitemap.xml
