@@ -1,23 +1,200 @@
 // Apple Verify Receipt — Server-side subscription activation
 // Called by the client after a StoreKit 2 purchase or restore.
-// Writes subscription status to DB using service_role (bypasses RLS).
+// Validates transaction with Apple's App Store Server API, then writes to DB.
 // Apple Server Notifications V2 remain the ultimate source of truth.
-//
-// NOTE ON SERVER-SIDE VERIFICATION:
-// StoreKit 2 transactions are signed JWS verified on-device. For additional
-// server-side verification, consider calling Apple's App Store Server API:
-//   GET https://api.storekit.itunes.apple.com/inApps/v1/transactions/{transactionId}
-// This requires an App Store Server API key configured in App Store Connect.
-// The current implementation trusts client-submitted data as an initial write,
-// with Apple Server Notifications V2 as the authoritative source of truth.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 import { getCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
 const VALID_PRODUCT_IDS = ['com.memoryaisle.premium.MOSUB2'];
+const APPLE_BUNDLE_ID = 'com.memoryaisle.app';
 
-// Maximum request body size (50KB — more than enough for purchase data)
+// Maximum request body size (50KB)
 const MAX_BODY_SIZE = 50_000;
+
+// Apple App Store Server API endpoints
+const APPLE_API_PRODUCTION = 'https://api.storekit.itunes.apple.com';
+const APPLE_API_SANDBOX = 'https://api.storekit-sandbox.itunes.apple.com';
+
+// JWT cache: reuse token for up to 50 minutes (Apple allows 60 min max)
+let cachedJwt: { token: string; expiresAt: number } | null = null;
+
+// ============================================
+// Apple App Store Server API JWT Generation
+// ============================================
+
+function base64UrlEncode(data: Uint8Array): string {
+  let binary = '';
+  for (const byte of data) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlEncodeString(str: string): string {
+  return base64UrlEncode(new TextEncoder().encode(str));
+}
+
+/**
+ * Import the ES256 private key from PEM for signing JWTs.
+ */
+async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  const pemBody = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s/g, '');
+
+  const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+
+  return crypto.subtle.importKey(
+    'pkcs8',
+    binaryDer,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  );
+}
+
+/**
+ * Generate a signed JWT for Apple's App Store Server API.
+ * Uses ES256 (ECDSA P-256 + SHA-256) as required by Apple.
+ */
+async function generateAppleJwt(): Promise<string> {
+  // Return cached token if still valid
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedJwt && cachedJwt.expiresAt > now + 60) {
+    return cachedJwt.token;
+  }
+
+  const keyId = Deno.env.get('APPLE_IAP_KEY_ID');
+  const issuerId = Deno.env.get('APPLE_IAP_ISSUER_ID');
+  const privateKeyPem = Deno.env.get('APPLE_IAP_PRIVATE_KEY');
+
+  if (!keyId || !issuerId || !privateKeyPem) {
+    throw new Error('Missing Apple IAP API credentials');
+  }
+
+  const exp = now + 3000; // 50 minutes
+
+  const header = {
+    alg: 'ES256',
+    kid: keyId,
+    typ: 'JWT',
+  };
+
+  const payload = {
+    iss: issuerId,
+    iat: now,
+    exp,
+    aud: 'appstoreconnect-v1',
+    bid: APPLE_BUNDLE_ID,
+  };
+
+  const headerB64 = base64UrlEncodeString(JSON.stringify(header));
+  const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
+  const signingInput = `${headerB64}.${payloadB64}`;
+
+  const key = await importPrivateKey(privateKeyPem);
+
+  const signatureBuffer = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    new TextEncoder().encode(signingInput),
+  );
+
+  // Convert DER signature to raw r||s format for JWT
+  const signature = derToRaw(new Uint8Array(signatureBuffer));
+  const signatureB64 = base64UrlEncode(signature);
+
+  const token = `${signingInput}.${signatureB64}`;
+
+  cachedJwt = { token, expiresAt: exp };
+  return token;
+}
+
+/**
+ * ECDSA signatures from WebCrypto are DER-encoded.
+ * Apple/JWT expects raw r||s (64 bytes for P-256).
+ */
+function derToRaw(der: Uint8Array): Uint8Array {
+  // DER: 0x30 <len> 0x02 <rLen> <r> 0x02 <sLen> <s>
+  const raw = new Uint8Array(64);
+
+  let offset = 2; // skip 0x30 <len>
+  // r
+  offset++; // skip 0x02
+  const rLen = der[offset++];
+  const rStart = rLen > 32 ? offset + (rLen - 32) : offset;
+  const rDest = rLen < 32 ? 32 - rLen : 0;
+  raw.set(der.slice(rStart, offset + rLen), rDest);
+  offset += rLen;
+  // s
+  offset++; // skip 0x02
+  const sLen = der[offset++];
+  const sStart = sLen > 32 ? offset + (sLen - 32) : offset;
+  const sDest = sLen < 32 ? 64 - sLen : 32;
+  raw.set(der.slice(sStart, offset + sLen), sDest);
+
+  return raw;
+}
+
+/**
+ * Call Apple's App Store Server API to validate a transaction.
+ * Returns the decoded transaction info if valid, null if not found or invalid.
+ */
+async function verifyTransactionWithApple(
+  transactionId: string,
+  isSandbox: boolean,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const jwt = await generateAppleJwt();
+    const baseUrl = isSandbox ? APPLE_API_SANDBOX : APPLE_API_PRODUCTION;
+    const url = `${baseUrl}/inApps/v1/transactions/${transactionId}`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+
+    if (response.status === 404) {
+      return null; // Transaction does not exist
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(JSON.stringify({
+        event: 'apple_api_error',
+        status: response.status,
+        body: errorText.slice(0, 500),
+      }));
+      // On API error, return null but don't block (Apple notifications are backup)
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Response contains signedTransactionInfo as a JWS
+    // For now we decode the payload without re-verifying the JWS since
+    // the outer API response is already authenticated via our JWT.
+    const signedTxn = data.signedTransactionInfo;
+    if (!signedTxn) return null;
+
+    const parts = signedTxn.split('.');
+    if (parts.length !== 3) return null;
+
+    const payloadJson = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(payloadJson);
+  } catch (e) {
+    console.error(JSON.stringify({
+      event: 'apple_api_verify_exception',
+      error: String(e),
+    }));
+    return null;
+  }
+}
+
+// ============================================
+// Main handler
+// ============================================
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -90,6 +267,70 @@ Deno.serve(async (req) => {
       );
     }
 
+    // --- Verify transaction with Apple's App Store Server API ---
+    const isSandbox = environment === 'Sandbox'
+      || environment === 'sandbox'
+      || !environment; // Default to sandbox check if environment not specified
+
+    const hasAppleKeys = Deno.env.get('APPLE_IAP_KEY_ID')
+      && Deno.env.get('APPLE_IAP_ISSUER_ID')
+      && Deno.env.get('APPLE_IAP_PRIVATE_KEY');
+
+    let appleVerified = false;
+    let appleExpiresDate = expiresDate;
+    let appleProductId = productId;
+
+    if (hasAppleKeys) {
+      // Try production first, fall back to sandbox
+      let appleTxn = await verifyTransactionWithApple(transactionId, false);
+      if (!appleTxn && isSandbox) {
+        appleTxn = await verifyTransactionWithApple(transactionId, true);
+      }
+
+      if (appleTxn) {
+        appleVerified = true;
+
+        // Use Apple's authoritative data instead of client-submitted values
+        if (appleTxn.productId) {
+          appleProductId = appleTxn.productId as string;
+        }
+        if (appleTxn.expiresDate) {
+          appleExpiresDate = appleTxn.expiresDate;
+        }
+
+        // Validate product ID from Apple matches our known products
+        if (!VALID_PRODUCT_IDS.includes(appleProductId)) {
+          console.error(JSON.stringify({
+            event: 'apple_api_product_mismatch',
+            user_id: user.id,
+            client_product: productId,
+            apple_product: appleProductId,
+          }));
+          return new Response(
+            JSON.stringify({ error: 'Invalid product' }),
+            { status: 400, headers: jsonHeaders },
+          );
+        }
+
+        console.log(JSON.stringify({
+          event: 'apple_api_verified',
+          user_id: user.id,
+          transaction_id: transactionId,
+          apple_product: appleProductId,
+        }));
+      } else {
+        // Apple API returned nothing. Log but don't block, as StoreKit 2
+        // on-device verification is still valid. Apple Server Notifications
+        // will arrive as the authoritative backup.
+        console.warn(JSON.stringify({
+          event: 'apple_api_transaction_not_found',
+          user_id: user.id,
+          transaction_id: transactionId,
+          environment,
+        }));
+      }
+    }
+
     // Use service_role to write subscription status (bypasses RLS)
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -136,8 +377,6 @@ Deno.serve(async (req) => {
       }
 
       // Still active (Apple requires honoring paid time) — allow restore.
-      // Keep the blacklist record; it will be cleaned up when the subscription
-      // expires via apple-server-notifications EXPIRED handler.
       console.log(JSON.stringify({
         event: 'blacklisted_txn_still_active_allowing_restore',
         user_id: user.id,
@@ -147,15 +386,14 @@ Deno.serve(async (req) => {
     }
 
     // --- Normalize expiresDate to ISO string ---
-    // StoreKit 2 sends millisecond timestamps; guard against other formats
+    // Use Apple-verified expiry if available, otherwise client-submitted
     let normalizedExpiresDate: string | null = null;
-    if (expiresDate) {
-      if (typeof expiresDate === 'number') {
-        // Apple uses millisecond timestamps
-        normalizedExpiresDate = new Date(expiresDate).toISOString();
-      } else if (typeof expiresDate === 'string') {
-        // Already an ISO string or parseable date
-        const parsed = new Date(expiresDate);
+    const effectiveExpiresDate = appleExpiresDate;
+    if (effectiveExpiresDate) {
+      if (typeof effectiveExpiresDate === 'number') {
+        normalizedExpiresDate = new Date(effectiveExpiresDate).toISOString();
+      } else if (typeof effectiveExpiresDate === 'string') {
+        const parsed = new Date(effectiveExpiresDate);
         if (!isNaN(parsed.getTime())) {
           normalizedExpiresDate = parsed.toISOString();
         }
@@ -169,12 +407,12 @@ Deno.serve(async (req) => {
       user_id: user.id,
       tier: 'premium',
       status: 'active',
-      billing_interval: deriveBillingInterval(productId),
-      apple_product_id: productId,
+      billing_interval: deriveBillingInterval(appleProductId),
+      apple_product_id: appleProductId,
       apple_transaction_id: transactionId,
       apple_original_transaction_id: effectiveOriginalTxnId,
       cancel_at_period_end: false,
-      last_updated_source: 'client_verify',
+      last_updated_source: appleVerified ? 'client_verify_apple_validated' : 'client_verify',
       updated_at: now,
     };
 
@@ -197,7 +435,7 @@ Deno.serve(async (req) => {
     // don't overwrite with potentially less complete client data.
     const { data: currentSub } = await serviceClient
       .from('subscriptions')
-      .select('last_updated_source, updated_at')
+      .select('last_updated_source, updated_at, status')
       .eq('user_id', user.id)
       .maybeSingle();
 
@@ -205,15 +443,7 @@ Deno.serve(async (req) => {
       currentSub?.last_updated_source === 'apple_notification' &&
       currentSub?.updated_at
     ) {
-      // Server notification exists — only skip if the subscription is currently active.
-      // If expired/canceled, allow client to re-activate (user re-subscribed).
-      const { data: subStatus } = await serviceClient
-        .from('subscriptions')
-        .select('status')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (subStatus?.status === 'active' || subStatus?.status === 'trialing') {
+      if (currentSub.status === 'active' || currentSub.status === 'trialing') {
         console.log(JSON.stringify({
           event: 'client_verify_skipped_server_notification_active',
           user_id: user.id,
@@ -245,13 +475,14 @@ Deno.serve(async (req) => {
     console.log(JSON.stringify({
       event: 'subscription_activated',
       user_id: user.id,
-      product_id: productId,
+      product_id: appleProductId,
       transaction_id: transactionId,
+      apple_verified: appleVerified,
       environment,
     }));
 
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, apple_verified: appleVerified }),
       { status: 200, headers: jsonHeaders },
     );
   } catch (error) {
@@ -272,7 +503,6 @@ Deno.serve(async (req) => {
 
 /**
  * Derive billing interval from product ID.
- * Extend this when adding monthly or other plans.
  */
 function deriveBillingInterval(productId: string): string {
   const lower = productId.toLowerCase();

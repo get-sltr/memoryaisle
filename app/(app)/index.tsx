@@ -101,7 +101,10 @@ import type { ListItem, GroceryList as GroceryListType } from '../../src/types';
 import { notificationService } from '../../src/services/notifications';
 import { logger } from '../../src/utils/logger';
 
-export default function MainList() {
+import { withErrorBoundary } from '../../src/services/errorTracking';
+import { ErrorFallback } from '../../src/components/ErrorFallback';
+
+function MainList() {
   const { user, household, setUser, setHousehold, isGuest } = useAuthStore();
   const { colors, loadTheme } = useThemeStore();
   const insets = useSafeAreaInsets();
@@ -2755,3 +2758,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+
+export default withErrorBoundary(MainList, <ErrorFallback />);

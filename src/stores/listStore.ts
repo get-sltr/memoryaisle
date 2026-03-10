@@ -26,6 +26,9 @@ interface ListState {
   // Computed
   incompleteItems: () => ListItem[];
   completedItems: () => ListItem[];
+
+  // Cleanup
+  reset: () => void;
 }
 
 export const useListStore = create<ListState>((set, get) => ({
@@ -73,4 +76,6 @@ export const useListStore = create<ListState>((set, get) => ({
 
   incompleteItems: () => get().items.filter((item) => !item.is_completed),
   completedItems: () => get().items.filter((item) => item.is_completed),
+
+  reset: () => set({ currentList: null, items: [], isLoading: false, isSyncing: false }),
 }));

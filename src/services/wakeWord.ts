@@ -20,7 +20,7 @@ type ErrorCallback = (error: Error) => void;
 const WAKE_WORD_CONFIG = {
   id: 'hey_mira',
   modelName: 'hey_mira.onnx',
-  threshold: 0.9999,
+  threshold: 0.9,
   bufferCnt: 3,
   sticky: false,
 };

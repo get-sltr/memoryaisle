@@ -146,6 +146,16 @@ function isPendingCode(code: any) {
   );
 }
 
+function isAlreadyOwnedCode(code: any) {
+  return (
+    code === ErrorCode.E_ALREADY_OWNED ||
+    code === ErrorCode.E_ITEM_ALREADY_OWNED ||
+    code === ErrorCode.ItemAlreadyPurchased ||
+    code === "E_ALREADY_OWNED" ||
+    code === "E_ITEM_ALREADY_OWNED"
+  );
+}
+
 async function safeFinishTransaction(purchase: Purchase) {
   try {
     await finishTransaction({ purchase, isConsumable: false });
@@ -275,7 +285,7 @@ class IAPService {
       }
 
       const isIPad = (Platform as any).isPad || Dimensions.get("window").width >= 768;
-      await delay(isIPad ? 1500 : 300);
+      await delay(isIPad ? 500 : 200);
 
       await initConnection();
       this.initialized = true;
@@ -325,42 +335,77 @@ class IAPService {
     this.removeTransactionListeners();
 
     this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-      // StoreKit 2 transactions are signed and verified on-device by the OS.
-      // Resolve the purchase as successful immediately so the user isn't blocked.
-      // Server verification happens in the background — Apple Server Notifications
-      // V2 remain the authoritative source of truth for subscription state.
+      // Verify with server FIRST so the subscription row exists in the DB
+      // before we resolve success to the UI. This prevents the race condition
+      // where the UI refreshes and finds no subscription.
+      let verified = false;
+      try {
+        verified = await verifyWithServer(purchase);
+      } catch (e: any) {
+        logger.warn("IAP: verify failed during purchase", { message: e?.message });
+      }
+
+      // Retry once if first verify failed (transient network issue)
+      if (!verified) {
+        await delay(1500);
+        try {
+          verified = await verifyWithServer(purchase);
+        } catch (e: any) {
+          logger.warn("IAP: verify retry failed", { message: e?.message });
+        }
+      }
+
+      await safeFinishTransaction(purchase);
+
       if (this.purchaseResolver) {
-        this.purchaseResolver({ status: "success" });
+        if (verified) {
+          this.purchaseResolver({ status: "success" });
+        } else {
+          // Purchase succeeded at OS level but server write failed.
+          // Resolve success anyway — Apple Server Notifications will
+          // update the subscription, and user can tap Restore Purchases.
+          logger.error("IAP: server verify failed but OS purchase succeeded, resolving success");
+          this.purchaseResolver({ status: "success" });
+        }
         this.purchaseResolver = null;
         this.purchaseInFlight = false;
       }
 
       this.notifyStatusChange();
-
-      // Background: finish the transaction and verify with server (best-effort)
-      try {
-        await verifyWithServer(purchase);
-      } catch (e: any) {
-        logger.warn("IAP: background verify failed (non-blocking)", { message: e?.message });
-      } finally {
-        await safeFinishTransaction(purchase);
-      }
     });
 
-    this.purchaseErrorSub = purchaseErrorListener((err: PurchaseError) => {
+    this.purchaseErrorSub = purchaseErrorListener(async (err: PurchaseError) => {
       if (!this.purchaseResolver) return;
 
       const code = err?.code;
       if (isCancelCode(code)) {
         this.purchaseResolver({ status: "cancelled" });
+        this.purchaseResolver = null;
+        this.purchaseInFlight = false;
       } else if (isPendingCode(code)) {
         this.purchaseResolver({ status: "pending" });
+        this.purchaseResolver = null;
+        this.purchaseInFlight = false;
+      } else if (isAlreadyOwnedCode(code)) {
+        // User already owns this subscription — restore it instead of erroring
+        logger.info("IAP: Item already owned, attempting restore");
+        const resolver = this.purchaseResolver;
+        this.purchaseResolver = null;
+        this.purchaseInFlight = false;
+        try {
+          const restored = await this.restorePurchases();
+          resolver(restored
+            ? { status: "success" }
+            : { status: "error", message: "You already own this subscription. Please tap Restore Purchases." }
+          );
+        } catch {
+          resolver({ status: "error", message: "You already own this subscription. Please tap Restore Purchases." });
+        }
       } else {
         this.purchaseResolver({ status: "error", message: err?.message ?? "Purchase failed." });
+        this.purchaseResolver = null;
+        this.purchaseInFlight = false;
       }
-
-      this.purchaseResolver = null;
-      this.purchaseInFlight = false;
     });
 
     this.observerActive = true;
@@ -447,6 +492,18 @@ class IAPService {
       this.purchaseInFlight = false;
 
       if (isCancelCode(code)) return { status: "cancelled" };
+
+      if (isAlreadyOwnedCode(code)) {
+        logger.info("IAP: Item already owned (catch), attempting restore");
+        try {
+          const restored = await this.restorePurchases();
+          return restored
+            ? { status: "success" }
+            : { status: "error", message: "You already own this subscription. Please tap Restore Purchases." };
+        } catch {
+          return { status: "error", message: "You already own this subscription. Please tap Restore Purchases." };
+        }
+      }
 
       logger.error("IAP: Purchase request failed", { message: e?.message, code });
       return { status: "error", message: "Could not start purchase. Please try again." };
@@ -562,7 +619,7 @@ class IAPService {
 
     try {
       const fKey = feature === "miraQueriesPerDay" ? "mira_queries" : "recipes";
-      const today = new Date().toISOString().split("T")[0];
+      const today = new Date().toLocaleDateString("en-CA");
       const { data } = await supabase
         .from("usage_tracking")
         .select("count")
@@ -578,19 +635,24 @@ class IAPService {
     }
   }
 
+  /**
+   * Increment daily usage. Returns new count, or -1 if server rejected (quota exceeded).
+   */
   async incrementUsage(
     userId: string,
     feature: "miraQueriesPerDay" | "recipesPerDay"
   ): Promise<number> {
     try {
       const fKey = feature === "miraQueriesPerDay" ? "mira_queries" : "recipes";
-      const today = new Date().toISOString().split("T")[0];
+      const today = new Date().toLocaleDateString("en-CA");
       const { data, error } = await supabase.rpc("increment_daily_usage", {
         p_user_id: userId,
         p_feature: fKey,
         p_date: today,
       });
       if (error) throw error;
+      // Server returns -1 when quota exceeded
+      if (data === -1) return -1;
       return data || 1;
     } catch (e: any) {
       logger.error("IAP: incrementUsage failed", { message: e?.message });

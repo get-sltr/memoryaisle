@@ -60,7 +60,25 @@ const ALLERGY_OPTIONS = Object.entries(ALLERGENS).map(([id, info]) => ({
 }));
 
 export default function ProfileScreen() {
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, isGuest } = useAuthStore();
+
+  if (isGuest) {
+    return (
+      <ScreenWrapper>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.text.primary, marginBottom: 8 }}>Account Required</Text>
+          <Text style={{ fontSize: 15, color: COLORS.text.secondary, textAlign: 'center', marginBottom: 24 }}>Create a free account to set up your profile.</Text>
+          <Pressable
+            style={{ backgroundColor: COLORS.gold.base, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}
+            onPress={() => router.replace('/(auth)/landing')}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '600', color: '#FFF' }}>Sign Up</Text>
+          </Pressable>
+        </View>
+      </ScreenWrapper>
+    );
+  }
+
   const profile = user?.profile || {};
 
   // Form state

@@ -20,6 +20,18 @@ async function readFileAsBase64(uri: string): Promise<string> {
   });
 }
 
+// Helper to delete a temporary audio file after processing
+async function deleteAudioFile(uri: string): Promise<void> {
+  try {
+    const FileSystem = require('expo-file-system');
+    if (FileSystem?.deleteAsync) {
+      await FileSystem.deleteAsync(uri, { idempotent: true });
+    }
+  } catch {
+    // Non-critical: file will be cleaned up by OS eventually
+  }
+}
+
 // Helper to check if file exists using fetch
 async function checkFileExists(uri: string): Promise<{ exists: boolean; size?: number }> {
   try {
@@ -330,6 +342,9 @@ class MiraAssistant {
         speakerName: context?.speakerName || this.currentSpeaker || undefined,
       });
       logger.info('Transcribe result:', result.success, result.error);
+
+      // Clean up audio file after processing (privacy + storage)
+      deleteAudioFile(uri);
 
       // Add to history
       if (result.transcription) {

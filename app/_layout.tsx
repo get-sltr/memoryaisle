@@ -14,6 +14,9 @@ import { notificationService } from "../src/services/notifications";
 import { geofenceService } from "../src/services/geofence";
 import { iapService } from "../src/services/iap";
 import { useSubscriptionStore } from "../src/stores/subscriptionStore";
+import { useListStore } from "../src/stores/listStore";
+import { realtimeSync } from "../src/services/realtimeSync";
+import { mira } from "../src/services/mira";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -61,13 +64,16 @@ export default function RootLayout() {
     try { notificationService.removeNotificationListeners(); } catch {}
     try { geofenceService.stopMonitoring(); } catch {}
     try { useSubscriptionStore.getState().cleanup(); } catch {}
+    try { useListStore.getState().reset(); } catch {}
+    try { realtimeSync.disconnect(); } catch {}
+    try { mira.clearConversation(); } catch {}
   }, []);
 
   const initIAP = useCallback((userId: string) => {
     if (iapInitialized.current) return;
 
     const isIPad = (Platform as any).isPad || Dimensions.get("window").width >= 768;
-    const startupDelay = isIPad ? 4000 : 1500;
+    const startupDelay = isIPad ? 2000 : 800;
 
     // Schedule once; clear on sign-out/unmount
     clearIapTimer();

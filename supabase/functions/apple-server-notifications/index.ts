@@ -544,6 +544,37 @@ async function updateSubscription(
   userId: string,
   params: UpdateSubscriptionParams,
 ): Promise<void> {
+  // Guard against out-of-order notifications: never downgrade to expired/free
+  // if the DB already has a newer expiration date (e.g., DID_RENEW arrived first).
+  if (params.status === 'expired' || params.status === 'revoked' || params.status === 'refunded') {
+    const { data: current } = await supabase
+      .from('subscriptions')
+      .select('current_period_end, status')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (
+      current &&
+      (current.status === 'active' || current.status === 'trialing') &&
+      current.current_period_end &&
+      params.expiresDate
+    ) {
+      const existingEnd = new Date(current.current_period_end).getTime();
+      const incomingEnd = new Date(params.expiresDate).getTime();
+      // If the existing subscription has a later expiry, this notification is stale
+      if (existingEnd > incomingEnd) {
+        console.log(JSON.stringify({
+          event: 'out_of_order_notification_skipped',
+          user_id: userId,
+          existing_end: current.current_period_end,
+          incoming_end: new Date(params.expiresDate).toISOString(),
+          incoming_status: params.status,
+        }));
+        return;
+      }
+    }
+  }
+
   const { error } = await supabase
     .from('subscriptions')
     .update({
