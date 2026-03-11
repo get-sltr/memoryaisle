@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Pressable, Text, StyleSheet, Animated, Image, ImageSourcePropType, Easing } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Pressable, Text, StyleSheet, Animated, Image, ImageSourcePropType, Easing, Dimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,83 +11,10 @@ import {
   SHADOWS,
   HIG,
 } from '../constants/theme';
-// MiraIcon removed - Mira now uses floating button only
 
-// Animated Rose Gold Border Component
-function AnimatedRoseGoldBorder() {
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(0.6)).current;
-
-  useEffect(() => {
-    // Continuous rotation animation for gradient border
-    const rotateLoop = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 3000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    rotateLoop.start();
-
-    // Pulsing glow animation
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0.6,
-          duration: 1500,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseLoop.start();
-
-    return () => {
-      rotateLoop.stop();
-      pulseLoop.stop();
-    };
-  }, []);
-
-  const rotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <>
-      {/* Pulsing glow underneath */}
-      <Animated.View
-        style={[
-          styles.pulsingGlow,
-          { opacity: pulseAnim }
-        ]}
-      />
-      {/* Animated gradient border */}
-      <View style={styles.animatedBorderContainer}>
-        <Animated.View
-          style={[
-            styles.rotatingGradient,
-            { transform: [{ rotate }] }
-          ]}
-        >
-          <LinearGradient
-            colors={['#E8B8D4', '#D4A547', '#FFB6C1', '#D4A547', '#E8B8D4']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-      </View>
-    </>
-  );
-}
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const COLLAPSED_WIDTH = 44;
+const COLLAPSED_RIGHT = 8;
 
 // Custom tab icons
 const TAB_ICONS = {
@@ -114,7 +41,7 @@ const GlassTabIcon = ({ source, active }: { source: ImageSourcePropType; active:
   </View>
 );
 
-// Tab icons as simple components
+// Tab icons
 const ListIcon = ({ active }: { active: boolean }) => (
   <GlassTabIcon source={TAB_ICONS.list} active={active} />
 );
@@ -173,7 +100,6 @@ const SettingsIcon = ({ active }: { active: boolean }) => (
   </View>
 );
 
-// Receipt Scan Icon with special gold styling (similar ring effect)
 const ReceiptScanIcon = ({ active }: { active: boolean }) => (
   <View style={[styles.iconGlassWrapper, styles.receiptIconWrapper, active && styles.iconGlassWrapperActive]}>
     <LinearGradient
@@ -213,70 +139,154 @@ interface BottomTabBarProps {
 
 export function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const [expanded, setExpanded] = useState(false);
+  const slideAnim = useRef(new Animated.Value(0)).current; // 0 = collapsed, 1 = expanded
+
+  const toggle = () => {
+    const toValue = expanded ? 0 : 1;
+    Animated.spring(slideAnim, {
+      toValue,
+      damping: 18,
+      stiffness: 200,
+      useNativeDriver: true,
+    }).start();
+    setExpanded(!expanded);
+  };
+
+  const handleTabPress = (routeName: string, routeKey: string, isFocused: boolean) => {
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: routeKey,
+      canPreventDefault: true,
+    });
+
+    if (!isFocused && !event.defaultPrevented) {
+      navigation.navigate(routeName);
+    }
+
+    // Auto-collapse after navigation
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      damping: 18,
+      stiffness: 200,
+      useNativeDriver: true,
+    }).start();
+    setExpanded(false);
+  };
+
+  // The full bar slides in from right. translateX goes from SCREEN_WIDTH to 0.
+  const barTranslateX = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SCREEN_WIDTH, 0],
+  });
+
+  // The collapsed pill fades out as bar expands
+  const pillOpacity = slideAnim.interpolate({
+    inputRange: [0, 0.3],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const pillScale = slideAnim.interpolate({
+    inputRange: [0, 0.3],
+    outputRange: [1, 0.8],
+    extrapolate: 'clamp',
+  });
+
+  const bottomPadding = Math.max(insets.bottom, 12);
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-      {/* Background gradient fade */}
-      <LinearGradient
-        colors={['transparent', 'rgba(200, 212, 228, 0.95)']}
-        style={styles.fadeGradient}
-        pointerEvents="none"
-      />
-
-      {/* Glass nav bar wrapper - allows animated border to extend outside */}
-      <View style={styles.navBarWrapper}>
-        {/* Animated rose gold border effect */}
-        <AnimatedRoseGoldBorder />
-
-        {/* Glass nav bar content */}
-        <View style={styles.navBar}>
-          <BlurView intensity={30} tint="light" style={styles.blur} />
+    <>
+      {/* Collapsed pill - sits on right edge */}
+      <Animated.View
+        style={[
+          styles.collapsedPill,
+          {
+            bottom: bottomPadding + 8,
+            opacity: pillOpacity,
+            transform: [{ scale: pillScale }],
+          },
+        ]}
+        pointerEvents={expanded ? 'none' : 'auto'}
+      >
+        <Pressable
+          onPress={toggle}
+          style={styles.collapsedPillTouchable}
+          accessibilityLabel="Open navigation"
+          accessibilityRole="button"
+        >
+          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
           <LinearGradient
-            colors={['rgba(255, 255, 255, 0.85)', 'rgba(250, 250, 255, 0.75)']}
-            style={styles.gradient}
+            colors={['rgba(255, 255, 255, 0.9)', 'rgba(250, 248, 245, 0.85)']}
+            style={StyleSheet.absoluteFill}
           />
-          {/* Top shine */}
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0)']}
-            style={styles.shine}
-          />
-          {/* Border */}
-          <View style={styles.border} />
+          <Text style={styles.collapsedPillText}>{'\u00BB'}</Text>
+        </Pressable>
+      </Animated.View>
 
-          {/* Tab items */}
-          <View style={styles.tabsContainer}>
-            {state.routes.map((route: any, index: number) => {
-              const tabConfig = TABS.find((t) => t.name === route.name);
-              if (!tabConfig) return null;
+      {/* Expanded full bar */}
+      <Animated.View
+        style={[
+          styles.container,
+          {
+            paddingBottom: bottomPadding,
+            transform: [{ translateX: barTranslateX }],
+          },
+        ]}
+        pointerEvents={expanded ? 'auto' : 'none'}
+      >
+        <LinearGradient
+          colors={['transparent', 'rgba(200, 212, 228, 0.95)']}
+          style={styles.fadeGradient}
+          pointerEvents="none"
+        />
 
-              const isFocused = state.index === index;
+        <View style={styles.navBarWrapper}>
+          <View style={styles.navBar}>
+            <BlurView intensity={30} tint="light" style={styles.blur} />
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.85)', 'rgba(250, 250, 255, 0.75)']}
+              style={styles.gradient}
+            />
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0)']}
+              style={styles.shine}
+            />
+            <View style={styles.border} />
 
-              const onPress = () => {
-                const event = navigation.emit({
-                  type: 'tabPress',
-                  target: route.key,
-                  canPreventDefault: true,
-                });
+            <View style={styles.tabsContainer}>
+              {/* Collapse button */}
+              <Pressable
+                onPress={toggle}
+                style={styles.collapseButton}
+                accessibilityLabel="Close navigation"
+                accessibilityRole="button"
+              >
+                <Text style={styles.collapseButtonText}>{'\u00AB'}</Text>
+              </Pressable>
 
-                if (!isFocused && !event.defaultPrevented) {
-                  navigation.navigate(route.name);
-                }
-              };
+              {/* Tab items */}
+              {state.routes.map((route: any, index: number) => {
+                const tabConfig = TABS.find((t) => t.name === route.name);
+                if (!tabConfig) return null;
 
-              return (
-                <TabItem
-                  key={route.key}
-                  label={tabConfig.label}
-                  icon={tabConfig.icon}
-                  active={isFocused}
-                  onPress={onPress}
-                />
-              );
-            })}
+                const isFocused = state.index === index;
+
+                return (
+                  <TabItem
+                    key={route.key}
+                    label={tabConfig.label}
+                    icon={tabConfig.icon}
+                    active={isFocused}
+                    onPress={() => handleTabPress(route.name, route.key, isFocused)}
+                  />
+                );
+              })}
+            </View>
           </View>
         </View>
-      </View>
-    </View>
+      </Animated.View>
+    </>
   );
 }
 
@@ -300,7 +310,13 @@ function TabItem({ label, icon: Icon, active, onPress }: TabItemProps) {
   }, [active]);
 
   return (
-    <Pressable onPress={onPress} style={styles.tabItem}>
+    <Pressable
+      onPress={onPress}
+      style={styles.tabItem}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+    >
       <Animated.View
         style={[
           styles.tabItemInner,
@@ -331,6 +347,34 @@ function TabItem({ label, icon: Icon, active, onPress }: TabItemProps) {
 }
 
 const styles = StyleSheet.create({
+  // Collapsed pill on right edge
+  collapsedPill: {
+    position: 'absolute',
+    right: COLLAPSED_RIGHT,
+    width: COLLAPSED_WIDTH,
+    height: COLLAPSED_WIDTH,
+    borderRadius: COLLAPSED_WIDTH / 2,
+    overflow: 'hidden',
+    ...SHADOWS.glassElevated,
+    zIndex: 100,
+  },
+  collapsedPillTouchable: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: COLLAPSED_WIDTH / 2,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+  },
+  collapsedPillText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.gold.base,
+    marginLeft: 2,
+  },
+  // Expanded bar
   container: {
     position: 'absolute',
     bottom: 0,
@@ -338,15 +382,15 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
+    zIndex: 100,
   },
   fadeGradient: {
     ...StyleSheet.absoluteFillObject,
     top: -40,
   },
   navBarWrapper: {
-    // Allow animated border to extend outside
     overflow: 'visible',
-    padding: 4, // Space for the animated border
+    padding: 4,
   },
   navBar: {
     borderRadius: BORDER_RADIUS.xxl,
@@ -376,13 +420,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: SPACING.sm,        // Was xs+2 (6pt) - now 8pt
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  collapseButton: {
+    width: 32,
+    height: HIG.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapseButtonText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.text.secondary,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
-    minHeight: HIG.minTouchTarget,      // Ensure 44pt minimum touch target
+    minHeight: HIG.minTouchTarget,
     justifyContent: 'center',
   },
   tabItemInner: {
@@ -392,7 +447,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    minHeight: HIG.minTouchTarget,      // Ensure 44pt minimum
+    minHeight: HIG.minTouchTarget,
   },
   tabItemActive: {
     ...SHADOWS.goldGlow,
@@ -412,8 +467,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   iconGlassWrapper: {
-    width: HIG.minTouchTarget,    // Was 32 - now 44pt for HIG compliance
-    height: HIG.minTouchTarget,   // Was 32 - now 44pt for HIG compliance
+    width: HIG.minTouchTarget,
+    height: HIG.minTouchTarget,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -439,8 +494,8 @@ const styles = StyleSheet.create({
     height: '55%',
   },
   tabIconImage: {
-    width: 26,            // Was 22 - slightly larger for visibility
-    height: 26,           // Was 22
+    width: 26,
+    height: 26,
     resizeMode: 'contain',
     opacity: 0.8,
   },
@@ -448,50 +503,19 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   icon: {
-    fontSize: 22,         // Was 18 - larger for visibility
+    fontSize: 22,
     opacity: 0.8,
   },
   iconActive: {
     opacity: 1,
   },
   tabLabel: {
-    fontSize: FONT_SIZES.xs,    // Now 11pt (was 10pt) - HIG minimum
+    fontSize: FONT_SIZES.xs,
     fontWeight: '600',
     color: COLORS.text.secondary,
     letterSpacing: 0.3,
   },
   tabLabelActive: {
     color: COLORS.white,
-  },
-  // Animated border styles
-  pulsingGlow: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
-    right: -8,
-    bottom: -8,
-    borderRadius: BORDER_RADIUS.xxl + 8,
-    backgroundColor: 'transparent',
-    shadowColor: '#E8B8D4',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  animatedBorderContainer: {
-    position: 'absolute',
-    top: -2,
-    left: -2,
-    right: -2,
-    bottom: -2,
-    borderRadius: BORDER_RADIUS.xxl + 2,
-    overflow: 'hidden',
-  },
-  rotatingGradient: {
-    width: '200%',
-    height: '200%',
-    position: 'absolute',
-    top: '-50%',
-    left: '-50%',
   },
 });
