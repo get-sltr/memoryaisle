@@ -13,13 +13,15 @@ const TEAM_ID = 'A2RL4W62BR';
 const KEY_ID = 'V6UKKQYURX'; // From Apple Developer - the Key ID you created
 const SERVICE_ID = 'com.memoryaisle.app.web'; // Your Services ID
 
-// Paste your .p8 private key contents here (including the BEGIN/END lines)
-const PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgYZcN4jw3qYl281+v
-YN+mWf0MyyxTNDD9fBPi+6+MxYWgCgYIKoZIzj0DAQehRANCAATQJmNwakKm7tzg
-PFLDBu0yfm52mBAkCh3UrTnu8l+P9K776uoYlw1H9oUVISvWNIYO90svQNyKz1fb
-5X3PJ0WL
------END PRIVATE KEY-----`;
+// Load your .p8 private key from a file (NEVER commit keys to git)
+const fs = require('fs');
+const P8_PATH = process.env.APPLE_P8_PATH || './AuthKey.p8';
+if (!fs.existsSync(P8_PATH)) {
+  console.error(`\nERROR: Private key file not found at ${P8_PATH}`);
+  console.error('Set APPLE_P8_PATH env var or place AuthKey.p8 in this directory.\n');
+  process.exit(1);
+}
+const PRIVATE_KEY = fs.readFileSync(P8_PATH, 'utf8').trim();
 // ================================
 
 function generateAppleClientSecret() {

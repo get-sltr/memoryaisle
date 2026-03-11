@@ -28,10 +28,11 @@ interface ChannelSubscription {
 class RealtimeSyncService {
   private subscriptions: Map<string, ChannelSubscription> = new Map();
   private familyChannel: RealtimeChannel | null = null;
-  
+
   private broadcastCallbacks: Map<string, Set<BroadcastCallback>> = new Map();
   private presenceCallbacks: Set<PresenceCallback> = new Set();
-  
+  private retryTimers: Set<ReturnType<typeof setTimeout>> = new Set();
+
   private userId: string | null = null;
   private familyId: string | null = null;
   private isConnected = false;
@@ -122,7 +123,13 @@ class RealtimeSyncService {
             channel.unsubscribe();
             this.subscriptions.delete(table);
             const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
-            setTimeout(() => this.subscribeToTable(table, retryCount + 1), delay);
+            const timer = setTimeout(() => {
+              this.retryTimers.delete(timer);
+              if (this.isConnected) {
+                this.subscribeToTable(table, retryCount + 1);
+              }
+            }, delay);
+            this.retryTimers.add(timer);
           } else {
             logger.error(`Realtime: gave up subscribing to ${table} after ${retryCount + 1} attempts`);
           }
@@ -230,14 +237,18 @@ class RealtimeSyncService {
 
   // Disconnect and cleanup
   disconnect(): void {
+    // Cancel all pending retry timers to prevent ghost subscriptions
+    this.retryTimers.forEach((timer) => clearTimeout(timer));
+    this.retryTimers.clear();
+
     this.subscriptions.forEach((sub) => sub.channel.unsubscribe());
     this.subscriptions.clear();
-    
+
     if (this.familyChannel) {
       this.familyChannel.unsubscribe();
       this.familyChannel = null;
     }
-    
+
     this.broadcastCallbacks.clear();
     this.presenceCallbacks.clear();
     this.isConnected = false;

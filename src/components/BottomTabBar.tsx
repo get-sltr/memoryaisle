@@ -20,17 +20,18 @@ function AnimatedRoseGoldBorder() {
 
   useEffect(() => {
     // Continuous rotation animation for gradient border
-    Animated.loop(
+    const rotateLoop = Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
         duration: 3000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
+    rotateLoop.start();
 
     // Pulsing glow animation
-    Animated.loop(
+    const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1,
@@ -45,7 +46,13 @@ function AnimatedRoseGoldBorder() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    pulseLoop.start();
+
+    return () => {
+      rotateLoop.stop();
+      pulseLoop.stop();
+    };
   }, []);
 
   const rotate = rotateAnim.interpolate({

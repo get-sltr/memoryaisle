@@ -33,7 +33,7 @@ export function MiraIcon({ size = 24, color = '#6B7F59', secondaryColor = '#8FA8
 
   useEffect(() => {
     if (animated) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.parallel([
           Animated.sequence([
             Animated.timing(pulseAnim, {
@@ -64,7 +64,9 @@ export function MiraIcon({ size = 24, color = '#6B7F59', secondaryColor = '#8FA8
             }),
           ]),
         ])
-      ).start();
+      );
+      loop.start();
+      return () => loop.stop();
     }
   }, [animated]);
 
@@ -150,11 +152,13 @@ export function MiraListeningIcon({ size = 24, color = '#D4614C', secondaryColor
         );
       };
 
-      Animated.parallel([
+      const combined = Animated.parallel([
         animateWave(wave1, 0),
         animateWave(wave2, 200),
         animateWave(wave3, 400),
-      ]).start();
+      ]);
+      combined.start();
+      return () => combined.stop();
     }
   }, [animated]);
 

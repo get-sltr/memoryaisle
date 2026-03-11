@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.memoryaisle.app",
       "infoPlist": {
         "UIBackgroundModes": [
-          "fetch"
+          "fetch",
+          "remote-notification"
         ],
         "NSCameraUsageDescription": "We use your camera to scan receipts and learn your shopping patterns.",
         "NSMicrophoneUsageDescription": "Mira uses your microphone to listen for 'Hey Mira' and to hear items you want to add to your list.",

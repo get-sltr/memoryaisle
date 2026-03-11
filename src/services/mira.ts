@@ -344,7 +344,7 @@ class MiraAssistant {
       logger.info('Transcribe result:', result.success, result.error);
 
       // Clean up audio file after processing (privacy + storage)
-      deleteAudioFile(uri);
+      deleteAudioFile(uri).catch(() => {});
 
       // Add to history
       if (result.transcription) {

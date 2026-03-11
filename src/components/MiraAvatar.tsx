@@ -30,7 +30,7 @@ export function MiraAvatar({ state, size = 'medium', colors }: MiraAvatarProps) 
   // Pulse animation for listening
   useEffect(() => {
     if (state === 'listening') {
-      Animated.loop(
+      const anim = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
             toValue: 1.15,
@@ -45,7 +45,9 @@ export function MiraAvatar({ state, size = 'medium', colors }: MiraAvatarProps) 
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      anim.start();
+      return () => anim.stop();
     } else {
       pulseAnim.setValue(1);
     }
@@ -54,14 +56,16 @@ export function MiraAvatar({ state, size = 'medium', colors }: MiraAvatarProps) 
   // Rotate animation for thinking
   useEffect(() => {
     if (state === 'thinking') {
-      Animated.loop(
+      const anim = Animated.loop(
         Animated.timing(rotateAnim, {
           toValue: 1,
           duration: 2000,
           easing: Easing.linear,
           useNativeDriver: true,
         })
-      ).start();
+      );
+      anim.start();
+      return () => anim.stop();
     } else {
       rotateAnim.setValue(0);
     }
@@ -70,7 +74,7 @@ export function MiraAvatar({ state, size = 'medium', colors }: MiraAvatarProps) 
   // Wave animation for speaking
   useEffect(() => {
     if (state === 'speaking') {
-      Animated.loop(
+      const anim = Animated.loop(
         Animated.sequence([
           Animated.timing(waveAnim, {
             toValue: 1,
@@ -83,7 +87,9 @@ export function MiraAvatar({ state, size = 'medium', colors }: MiraAvatarProps) 
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      anim.start();
+      return () => anim.stop();
     } else {
       waveAnim.setValue(0);
     }
@@ -190,7 +196,7 @@ function SoundWave({ delay, color }: { delay: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(anim, {
@@ -204,7 +210,9 @@ function SoundWave({ delay, color }: { delay: number; color: string }) {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
 
   return (
@@ -236,7 +244,7 @@ function ListeningDot({ delay, color }: { delay: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(anim, {
@@ -250,7 +258,9 @@ function ListeningDot({ delay, color }: { delay: number; color: string }) {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
 
   return (

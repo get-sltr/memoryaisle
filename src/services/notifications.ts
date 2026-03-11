@@ -136,6 +136,9 @@ class NotificationService {
     onReceived?: (notification: Notifications.Notification) => void,
     onResponse?: (response: Notifications.NotificationResponse) => void
   ): void {
+    // Clean up existing listeners before adding new ones to prevent leaks
+    this.removeNotificationListeners();
+
     // Notification received while app is foregrounded
     this.notificationListener = Notifications.addNotificationReceivedListener(
       (notification) => {

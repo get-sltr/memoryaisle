@@ -120,9 +120,7 @@ BEGIN
   -- ------------------------------------------------
   UPDATE admin_users SET created_by = NULL WHERE created_by = v_user_id;
   UPDATE error_logs SET resolved_by = NULL WHERE resolved_by = v_user_id;
-  UPDATE founder_family_codes SET created_by = NULL WHERE created_by = v_user_id;
-  UPDATE founder_family_codes SET redeemed_by = NULL WHERE redeemed_by = v_user_id;
-  UPDATE founder_family_members SET granted_by = NULL WHERE granted_by = v_user_id;
+  -- founder_family_codes and founder_family_members were dropped in 20260223_drop_prohibited_tables.sql
 
   -- ------------------------------------------------
   -- 4. Delete auth.users row — cascades everything else:
