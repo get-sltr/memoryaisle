@@ -265,7 +265,14 @@ export function MealPlanCard({
                 style={styles.actionButton}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onAddToList?.(mealPlan.shoppingList);
+                  
+                  // BUG FIX: Strip out the display text and only send the cleanName to the database
+                  // We also check if it's an old string (legacy data) just to be safe
+                  const cleanIngredients = mealPlan.shoppingList.map((item: any) => 
+                    typeof item === 'string' ? item : item.cleanName
+                  );
+                  
+                  onAddToList?.(cleanIngredients);
                 }}
               >
                 <LinearGradient
@@ -354,12 +361,18 @@ function MealItem({ mealType, meal, index, expanded, onPress }: MealItemProps) {
             >
               <Text style={styles.mealDescription}>{meal.description}</Text>
               <View style={styles.ingredientsList}>
-                {meal.ingredients.slice(0, 4).map((ingredient, i) => (
-                  <View key={i} style={styles.ingredientItem}>
-                    <View style={[styles.ingredientDot, { backgroundColor: config.gradient[0] }]} />
-                    <Text style={styles.ingredientText}>{ingredient}</Text>
-                  </View>
-                ))}
+                {meal.ingredients.slice(0, 4).map((ingredient: any, i) => {
+                  // BUG FIX: Handle the new object structure {"display": "...", "cleanName": "..."}
+                  // Falls back to string for backwards compatibility with old locally saved meal plans
+                  const displayText = typeof ingredient === 'string' ? ingredient : ingredient.display;
+                  
+                  return (
+                    <View key={i} style={styles.ingredientItem}>
+                      <View style={[styles.ingredientDot, { backgroundColor: config.gradient[0] }]} />
+                      <Text style={styles.ingredientText}>{displayText}</Text>
+                    </View>
+                  );
+                })}
                 {meal.ingredients.length > 4 && (
                   <Text style={styles.moreIngredients}>
                     +{meal.ingredients.length - 4} more
