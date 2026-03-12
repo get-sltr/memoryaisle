@@ -28,12 +28,12 @@ const purchaseErrorListener =
   iapModule?.purchaseErrorListener ?? (() => ({ remove: () => {} }));
 
 const fetchProducts =
-  iapModule?.fetchProducts ??
   iapModule?.getSubscriptions ??
+  iapModule?.fetchProducts ??
   (async (_args: any) => []);
 const requestPurchase =
-  iapModule?.requestPurchase ??
   iapModule?.requestSubscription ??
+  iapModule?.requestPurchase ??
   (async (_args: any) => {});
 
 const ErrorCode = iapModule?.ErrorCode ?? {};
@@ -165,10 +165,6 @@ async function safeFinishTransaction(purchase: Purchase) {
   }
 }
 
-/**
- * Extract StoreKit 2 fields from a purchase object.
- * react-native-iap versions differ in field names — this normalizes them.
- */
 function extractPurchaseFields(purchase: Purchase) {
   return {
     productId: purchase.productId ?? IAP_PRODUCTS.PREMIUM_MONTHLY,
@@ -178,16 +174,13 @@ function extractPurchaseFields(purchase: Purchase) {
       purchase.originalTransactionIdIOS ??
       purchase.transactionId ??
       null,
-    // StoreKit 2 expiration — try known field names from react-native-iap
     expiresDate:
       purchase.expirationDateIOS ??
       purchase.expiresDateIOS ??
       purchase.expirationDate ??
-      // Fallback: if no expiry field, estimate 30 days from purchase date
       (purchase.transactionDate
         ? new Date(Number(purchase.transactionDate) + 30 * 24 * 60 * 60 * 1000).toISOString()
         : undefined),
-    // react-native-iap may expose these on newer versions
     environment:
       purchase.environment ??
       (purchase.verificationResultIOS ? "Production" : undefined),
@@ -195,11 +188,6 @@ function extractPurchaseFields(purchase: Purchase) {
   };
 }
 
-/**
- * Send purchase data to the apple-verify-receipt Edge Function.
- * The Edge Function validates, writes to subscriptions, and returns success/failure.
- * Apple Server Notifications V2 remain the ultimate source of truth.
- */
 async function verifyWithServer(purchase: Purchase): Promise<boolean> {
   try {
     const fields = extractPurchaseFields(purchase);
@@ -246,6 +234,8 @@ class IAPService {
 
   private purchaseInFlight = false;
   private purchaseResolver: ((result: PurchaseResult) => void) | null = null;
+  // FIX: Storing timeout ID to clean it up safely
+  private purchaseTimeoutId: NodeJS.Timeout | null = null;
 
   private statusChangeListeners = new Set<StatusChangeCallback>();
 
@@ -329,15 +319,21 @@ class IAPService {
     return [];
   }
 
+  private cleanupPurchaseState() {
+    if (this.purchaseTimeoutId) {
+      clearTimeout(this.purchaseTimeoutId);
+      this.purchaseTimeoutId = null;
+    }
+    this.purchaseResolver = null;
+    this.purchaseInFlight = false;
+  }
+
   private setupGlobalTransactionObserver(): void {
     if (this.observerActive) return;
 
     this.removeTransactionListeners();
 
     this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-      // Verify with server FIRST so the subscription row exists in the DB
-      // before we resolve success to the UI. This prevents the race condition
-      // where the UI refreshes and finds no subscription.
       let verified = false;
       try {
         verified = await verifyWithServer(purchase);
@@ -345,7 +341,6 @@ class IAPService {
         logger.warn("IAP: verify failed during purchase", { message: e?.message });
       }
 
-      // Retry once if first verify failed (transient network issue)
       if (!verified) {
         await delay(1500);
         try {
@@ -361,14 +356,23 @@ class IAPService {
         if (verified) {
           this.purchaseResolver({ status: "success" });
         } else {
-          // Purchase succeeded at OS level but server write failed.
-          // Resolve success anyway — Apple Server Notifications will
-          // update the subscription, and user can tap Restore Purchases.
-          logger.error("IAP: server verify failed but OS purchase succeeded, resolving success");
-          this.purchaseResolver({ status: "success" });
+          // Third attempt after finishing transaction
+          await delay(2000);
+          try {
+            verified = await verifyWithServer(purchase);
+          } catch {}
+
+          if (verified) {
+            this.purchaseResolver({ status: "success" });
+          } else {
+            logger.error("IAP: server verify failed after 3 attempts, OS purchase succeeded");
+            this.purchaseResolver({
+              status: "error",
+              message: "Your purchase was completed but activation failed. Please tap Restore Purchases to unlock your subscription.",
+            });
+          }
         }
-        this.purchaseResolver = null;
-        this.purchaseInFlight = false;
+        this.cleanupPurchaseState();
       }
 
       this.notifyStatusChange();
@@ -380,18 +384,14 @@ class IAPService {
       const code = err?.code;
       if (isCancelCode(code)) {
         this.purchaseResolver({ status: "cancelled" });
-        this.purchaseResolver = null;
-        this.purchaseInFlight = false;
+        this.cleanupPurchaseState();
       } else if (isPendingCode(code)) {
         this.purchaseResolver({ status: "pending" });
-        this.purchaseResolver = null;
-        this.purchaseInFlight = false;
+        this.cleanupPurchaseState();
       } else if (isAlreadyOwnedCode(code)) {
-        // User already owns this subscription — restore it instead of erroring
         logger.info("IAP: Item already owned, attempting restore");
         const resolver = this.purchaseResolver;
-        this.purchaseResolver = null;
-        this.purchaseInFlight = false;
+        this.cleanupPurchaseState();
         try {
           const restored = await this.restorePurchases();
           resolver(restored
@@ -403,8 +403,7 @@ class IAPService {
         }
       } else {
         this.purchaseResolver({ status: "error", message: err?.message ?? "Purchase failed." });
-        this.purchaseResolver = null;
-        this.purchaseInFlight = false;
+        this.cleanupPurchaseState();
       }
     });
 
@@ -469,27 +468,24 @@ class IAPService {
       const resultPromise = new Promise<PurchaseResult>((resolve) => {
         this.purchaseResolver = resolve;
 
-        setTimeout(() => {
+        // FIX: Store timeout ID so we can clear it upon success/failure
+        this.purchaseTimeoutId = setTimeout(() => {
           if (this.purchaseResolver === resolve) {
-            this.purchaseResolver = null;
-            this.purchaseInFlight = false;
+            this.cleanupPurchaseState();
             resolve({ status: "error", message: "Purchase timed out. Please try again." });
           }
         }, 120_000);
       });
 
       await requestPurchase({
-        request: {
-          apple: { sku: IAP_PRODUCTS.PREMIUM_MONTHLY },
-        },
-        type: "subs",
+        sku: IAP_PRODUCTS.PREMIUM_MONTHLY,
       });
 
       return resultPromise;
     } catch (e: any) {
       const code = e?.code;
-      this.purchaseResolver = null;
-      this.purchaseInFlight = false;
+      // FIX: Clean up state immediately if requestPurchase throws an error
+      this.cleanupPurchaseState();
 
       if (isCancelCode(code)) return { status: "cancelled" };
 
@@ -514,7 +510,6 @@ class IAPService {
     if (!(await this.safeInitialize(3))) return false;
 
     try {
-      // Some versions need an explicit restore call on iOS
       if (restorePurchasesIOS) {
         try { await restorePurchasesIOS(); } catch {}
       }
@@ -522,16 +517,19 @@ class IAPService {
       const purchases = await getAvailablePurchases();
       if (!purchases?.length) return false;
 
-      const subPurchase = purchases.find((p: any) => ALL_PREMIUM_PRODUCT_IDS.includes(p.productId));
+      // FIX: Sort purchases by date descending to ensure we verify the NEWEST receipt first
+      const sortedPurchases = purchases.sort((a: any, b: any) => {
+        return Number(b.transactionDate || 0) - Number(a.transactionDate || 0);
+      });
+
+      const subPurchase = sortedPurchases.find((p: any) => ALL_PREMIUM_PRODUCT_IDS.includes(p.productId));
       if (!subPurchase) {
-        // still finish any dangling transactions
         for (const p of purchases) await safeFinishTransaction(p);
         return false;
       }
 
       const verified = await verifyWithServer(subPurchase);
 
-      // Always finish transactions best effort
       for (const p of purchases) await safeFinishTransaction(p);
 
       if (verified) this.notifyStatusChange();
@@ -554,17 +552,20 @@ class IAPService {
 
       const status = data.status || "none";
 
-      // Client-side expiry sanity check (server should already handle this via notifications)
+      // FIX: Added a 24-hour grace period to the client-side check. 
+      // This prevents paying users from being locked out if Apple's webhook is slightly delayed.
+      const gracePeriod = new Date();
+      gracePeriod.setHours(gracePeriod.getHours() - 24);
+
       if (
         data.tier === "premium" &&
         (status === "active" || status === "trialing") &&
         data.current_period_end &&
-        new Date(data.current_period_end) < new Date()
+        new Date(data.current_period_end) < gracePeriod
       ) {
         return { tier: "free", status: "none" };
       }
 
-      // Map revoked/refunded/expired to "none" tier on client side
       const effectiveTier: SubscriptionTier =
         (status === "revoked" || status === "refunded" || status === "expired")
           ? "free"
@@ -635,9 +636,6 @@ class IAPService {
     }
   }
 
-  /**
-   * Increment daily usage. Returns new count, or -1 if server rejected (quota exceeded).
-   */
   async incrementUsage(
     userId: string,
     feature: "miraQueriesPerDay" | "recipesPerDay"
@@ -651,7 +649,6 @@ class IAPService {
         p_date: today,
       });
       if (error) throw error;
-      // Server returns -1 when quota exceeded
       if (data === -1) return -1;
       return data || 1;
     } catch (e: any) {
@@ -678,9 +675,7 @@ class IAPService {
     this.purchaseErrorSub = null;
     this.observerActive = false;
 
-    // also clear in-flight resolver to avoid dangling state on sign-out
-    this.purchaseResolver = null;
-    this.purchaseInFlight = false;
+    this.cleanupPurchaseState();
   }
 }
 
