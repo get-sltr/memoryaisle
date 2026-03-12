@@ -1,16 +1,10 @@
 // Checkout redirects to upgrade page
 // Payments are handled via App Store In-App Purchases
 
-import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
+import { Redirect } from 'expo-router';
 
 export default function CheckoutScreen() {
-  const router = useRouter();
-
-  useEffect(() => {
-    // Redirect to upgrade page which handles IAP
-    router.replace('/(app)/upgrade');
-  }, []);
-
-  return null;
+  // PERFORMANCE FIX: Using Expo Router's declarative Redirect component 
+  // prevents momentary blank screens and mounts faster than a useEffect push.
+  return <Redirect href="/(app)/upgrade" />;
 }

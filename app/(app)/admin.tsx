@@ -80,8 +80,8 @@ function Section({ title, icon, children, onSeeAll }: {
   );
 }
 
-// User Row Component
-function UserRow({ user }: { user: AdminUser }) {
+// User Row Component - Wrapped in React.memo for performance
+const UserRow = React.memo(function UserRow({ user }: { user: AdminUser }) {
   const isPremium = user.subscription_tier === 'premium';
   const date = new Date(user.created_at);
   const timeAgo = getTimeAgo(date);
@@ -90,11 +90,14 @@ function UserRow({ user }: { user: AdminUser }) {
     <View style={styles.userRow}>
       <View style={styles.userAvatar}>
         <Text style={styles.userAvatarText}>
-          {user.email.charAt(0).toUpperCase()}
+          {/* Fallback to '?' if email is missing to prevent a crash */}
+          {user.email?.charAt(0)?.toUpperCase() || '?'}
         </Text>
       </View>
       <View style={styles.userInfo}>
-        <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+        <Text style={styles.userEmail} numberOfLines={1}>
+          {user.email || 'Unknown User'}
+        </Text>
         <Text style={styles.userMeta}>{timeAgo}</Text>
       </View>
       {isPremium && (
@@ -108,10 +111,10 @@ function UserRow({ user }: { user: AdminUser }) {
       )}
     </View>
   );
-}
+});
 
-// Subscription Row Component
-function SubscriptionRow({ sub }: { sub: AdminSubscription }) {
+// Subscription Row Component - Wrapped in React.memo
+const SubscriptionRow = React.memo(function SubscriptionRow({ sub }: { sub: AdminSubscription }) {
   const date = new Date(sub.created_at);
   const timeAgo = getTimeAgo(date);
   const isYearly = sub.billing_interval === 'year';
@@ -119,7 +122,9 @@ function SubscriptionRow({ sub }: { sub: AdminSubscription }) {
   return (
     <View style={styles.subRow}>
       <View style={styles.subInfo}>
-        <Text style={styles.subEmail} numberOfLines={1}>{sub.user_email}</Text>
+        <Text style={styles.subEmail} numberOfLines={1}>
+          {sub.user_email || 'Unknown Email'}
+        </Text>
         <View style={styles.subMeta}>
           <View style={[styles.subTag, isYearly && styles.subTagYearly]}>
             <Text style={[styles.subTagText, isYearly && styles.subTagTextYearly]}>
@@ -134,10 +139,10 @@ function SubscriptionRow({ sub }: { sub: AdminSubscription }) {
       </Text>
     </View>
   );
-}
+});
 
-// Error Row Component
-function ErrorRow({ error, onResolve }: { error: ErrorLog; onResolve: () => void }) {
+// Error Row Component - Wrapped in React.memo
+const ErrorRow = React.memo(function ErrorRow({ error, onResolve }: { error: ErrorLog; onResolve: () => void }) {
   const date = new Date(error.created_at);
   const timeAgo = getTimeAgo(date);
   const severityColors: Record<string, string> = {
@@ -147,13 +152,16 @@ function ErrorRow({ error, onResolve }: { error: ErrorLog; onResolve: () => void
     info: '#4D9CE8',
   };
 
+  // Safe fallback if severity level isn't mapped
+  const indicatorColor = severityColors[error.severity] || COLORS.text.secondary || '#999999';
+
   return (
     <View style={styles.errorRow}>
-      <View style={[styles.errorSeverity, { backgroundColor: severityColors[error.severity] }]} />
+      <View style={[styles.errorSeverity, { backgroundColor: indicatorColor }]} />
       <View style={styles.errorInfo}>
-        <Text style={styles.errorMessage} numberOfLines={2}>{error.error_message}</Text>
+        <Text style={styles.errorMessage} numberOfLines={2}>{error.error_message || 'Unknown error'}</Text>
         <View style={styles.errorMeta}>
-          <Text style={styles.errorType}>{error.error_type}</Text>
+          <Text style={styles.errorType}>{error.error_type || 'Error'}</Text>
           {error.component && <Text style={styles.errorComponent}>{error.component}</Text>}
           <Text style={styles.errorTime}>{timeAgo}</Text>
         </View>
@@ -165,12 +173,15 @@ function ErrorRow({ error, onResolve }: { error: ErrorLog; onResolve: () => void
       )}
     </View>
   );
-}
+});
 
-// Time ago helper
+// Time ago helper with added safety checks
 function getTimeAgo(date: Date): string {
+  if (!date || isNaN(date.getTime())) return 'Unknown time';
+  
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
+  // Math.max prevents negative numbers if device clock is behind server clock
+  const diffMs = Math.max(0, now.getTime() - date.getTime()); 
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
@@ -271,7 +282,7 @@ export default function AdminDashboard() {
   }
 
   const formatMRR = (mrr: number) => {
-    return `$${mrr.toFixed(2)}`;
+    return `$${(mrr || 0).toFixed(2)}`;
   };
 
   return (
@@ -648,7 +659,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   statCard: {
-    width: '48%',
+    width: '47%', // Fixed from 48% to prevent flex-wrap bugs on smaller screens
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
     overflow: 'hidden',

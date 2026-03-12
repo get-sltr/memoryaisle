@@ -44,13 +44,27 @@ export default function UpgradePage() {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeStore();
   const router = useRouter();
-  // Ensure we extract refresh so we can sync the UI instantly
+  
   const { isPremium, purchaseMonthly, restorePurchases, product, refresh } = useSubscription();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
   // Use live price from Apple, fall back to tier constant
   const displayPrice = product?.localizedPrice || `$${SUBSCRIPTION_TIERS.premium.price.monthly.toFixed(2)}`;
+
+  // PERFORMANCE & SAFETY FIX: Safe URL opening to prevent unhandled promise crashes
+  const handleOpenLink = async (url) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Link Error', 'Unable to open this link on your device.');
+      }
+    } catch (error) {
+      Alert.alert('Link Error', 'An unexpected error occurred while opening the link.');
+    }
+  };
 
   const handleSubscribe = async () => {
     setIsLoading(true);
@@ -106,8 +120,9 @@ export default function UpgradePage() {
   if (isPremium) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
+        {/* BUG FIX: Switched from static COLORS to dynamic colors to prevent crashes */}
         <LinearGradient
-          colors={[COLORS.background.start, COLORS.background.end]}
+          colors={[colors.background.start, colors.background.end]}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.header}>
@@ -130,9 +145,7 @@ export default function UpgradePage() {
           </Text>
           <Pressable
             style={styles.manageButton}
-            onPress={() => {
-              Linking.openURL('https://apps.apple.com/account/subscriptions');
-            }}
+            onPress={() => handleOpenLink('https://apps.apple.com/account/subscriptions')}
           >
             <Text style={styles.manageButtonText}>Manage Subscription</Text>
           </Pressable>
@@ -225,8 +238,9 @@ export default function UpgradePage() {
           What's included
         </Text>
         <View style={styles.featuresGrid}>
-          {PREMIUM_FEATURES.map((feature, index) => (
-            <View key={index} style={styles.featureItem}>
+          {/* BUG FIX: Swapped key from index to feature.title for React Virtual DOM stability */}
+          {PREMIUM_FEATURES.map((feature) => (
+            <View key={feature.title} style={styles.featureItem}>
               <Text style={styles.featureIcon}>{feature.icon}</Text>
               <View style={styles.featureTextContainer}>
                 <Text style={styles.featureTitle}>{feature.title}</Text>
@@ -242,14 +256,14 @@ export default function UpgradePage() {
             By subscribing, you agree to our{' '}
             <Text
               style={styles.termsLink}
-              onPress={() => Linking.openURL('https://memoryaisle.app/terms')}
+              onPress={() => handleOpenLink('https://memoryaisle.app/terms')}
             >
               Terms of Use
             </Text>
             {' '}and{' '}
             <Text
               style={styles.termsLink}
-              onPress={() => Linking.openURL('https://memoryaisle.app/privacy')}
+              onPress={() => handleOpenLink('https://memoryaisle.app/privacy')}
             >
               Privacy Policy
             </Text>

@@ -7,7 +7,8 @@ export default function AppLayout() {
   return (
     <View style={styles.container}>
       <Tabs
-        tabBar={(props) => <BottomTabBar {...props} />}
+        // PERFORMANCE FIX 1: Pass component reference directly to prevent re-renders
+        tabBar={BottomTabBar}
         screenOptions={{
           headerShown: false,
         }}
@@ -20,22 +21,23 @@ export default function AppLayout() {
         <Tabs.Screen name="settings" options={{ title: 'Menu' }} />
 
         {/* Non-tab screens (navigated to programmatically) */}
-        <Tabs.Screen name="mealplan" options={{ title: 'Plan', href: null }} />
-        <Tabs.Screen name="recipes" options={{ title: 'Recipes', href: null }} />
-        <Tabs.Screen name="profile" options={{ title: 'Profile', href: null }} />
-        <Tabs.Screen name="family" options={{ title: 'Family', href: null }} />
-        <Tabs.Screen name="trips" options={{ title: 'Trips', href: null }} />
-        <Tabs.Screen name="admin" options={{ title: 'Admin', href: null }} />
-        <Tabs.Screen name="upgrade" options={{ title: 'Upgrade', href: null }} />
-        <Tabs.Screen name="store-cards" options={{ title: 'Store Cards', href: null }} />
-        <Tabs.Screen name="orders" options={{ title: 'Orders', href: null }} />
-        <Tabs.Screen name="reports" options={{ title: 'Reports', href: null }} />
-        <Tabs.Screen name="prices" options={{ title: 'Prices', href: null }} />
-        <Tabs.Screen name="meal-plans" options={{ title: 'Meal Plans', href: null }} />
-        <Tabs.Screen name="checkout" options={{ title: 'Checkout', href: null }} />
-        <Tabs.Screen name="privacy" options={{ title: 'Privacy', href: null }} />
-        <Tabs.Screen name="terms" options={{ title: 'Terms', href: null }} />
-        <Tabs.Screen name="order-detail" options={{ title: 'Order Detail', href: null }} />
+        {/* PERFORMANCE FIX 2: Added unmountOnBlur to hidden tabs to free up memory when not in use */}
+        <Tabs.Screen name="mealplan" options={{ title: 'Plan', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="recipes" options={{ title: 'Recipes', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="profile" options={{ title: 'Profile', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="family" options={{ title: 'Family', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="trips" options={{ title: 'Trips', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="admin" options={{ title: 'Admin', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="upgrade" options={{ title: 'Upgrade', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="store-cards" options={{ title: 'Store Cards', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="orders" options={{ title: 'Orders', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="reports" options={{ title: 'Reports', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="prices" options={{ title: 'Prices', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="meal-plans" options={{ title: 'Meal Plans', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="checkout" options={{ title: 'Checkout', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="privacy" options={{ title: 'Privacy', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="terms" options={{ title: 'Terms', href: null, unmountOnBlur: true }} />
+        <Tabs.Screen name="order-detail" options={{ title: 'Order Detail', href: null, unmountOnBlur: true }} />
       </Tabs>
 
       {/* Mira Floating Button - accessible from all screens */}
