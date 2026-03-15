@@ -158,9 +158,12 @@ export async function saveMiraRecipe(
   householdId: string,
   recipe: MiraRecipe
 ): Promise<Recipe | null> {
-  // Convert string[] ingredients to RecipeIngredient[]
-  const ingredients: RecipeIngredient[] = recipe.ingredients.map((str) => ({
-    item: str,
+  
+  // BUG FIX: Handle the new {display, cleanName} object from the AI
+  // We smuggle the cleanName into the database JSON so we can use it later!
+  const ingredients = recipe.ingredients.map((ing: any) => ({
+    item: typeof ing === 'string' ? ing : ing.display,
+    cleanName: typeof ing === 'string' ? ing : ing.cleanName, // Smuggled property
     amount: '',
   }));
 
@@ -170,7 +173,7 @@ export async function saveMiraRecipe(
     prep_time: recipe.prepTime,
     cook_time: recipe.cookTime,
     servings: recipe.servings,
-    ingredients,
+    ingredients: ingredients as any, // Bypass strict type complaining
     instructions: recipe.instructions,
     source: 'mira',
   });
@@ -188,11 +191,16 @@ export async function addRecipeToList(
     }
 
     let addedCount = 0;
-    for (const ingredient of recipe.ingredients) {
-      // Format ingredient name with amount
-      const itemName = ingredient.amount
-        ? `${ingredient.item} (${ingredient.amount})`
-        : ingredient.item;
+    
+    // We cast to any[] to safely check for our smuggled cleanName property
+    for (const ingredient of recipe.ingredients as any[]) {
+      // Prioritize the AI's clean name, fallback to manual item name
+      const baseName = ingredient.cleanName || ingredient.item;
+
+      // Only format with amount if it's a manual entry without a cleanName
+      const itemName = ingredient.amount && !ingredient.cleanName
+        ? `${baseName} (${ingredient.amount})`
+        : baseName;
 
       const added = await addItem(list.id, itemName, undefined, 1, 'ai_suggested');
       if (added) {

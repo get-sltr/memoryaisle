@@ -44,6 +44,25 @@ export function useWakeWord() {
   const errorCallbackRef = useRef<ErrorCallback | null>(null);
   const isPausedRef = useRef(false);
 
+  const applyLicenseKey = useCallback(() => {
+    const licenseKey = (Constants.expoConfig?.extra as any)?.davoiceLicenseKey;
+    if (licenseKey) {
+      setKeywordDetectionLicense(licenseKey);
+    }
+  }, [setKeywordDetectionLicense]);
+
+  const startNativeListener = useCallback(() => {
+    applyLicenseKey();
+    loadModel(
+      [WAKE_WORD_CONFIG],
+      async (phraseDetected: string) => {
+        if (isPausedRef.current) return;
+        logger.info('Wake word detected:', phraseDetected);
+        callbackRef.current?.();
+      }
+    );
+  }, [loadModel, applyLicenseKey]);
+
   const startWakeWord = useCallback(
     (onDetected: WakeWordCallback, onError?: ErrorCallback): boolean => {
       try {
@@ -51,20 +70,7 @@ export function useWakeWord() {
         errorCallbackRef.current = onError ?? null;
         isPausedRef.current = false;
 
-        const licenseKey = (Constants.expoConfig?.extra as any)?.davoiceLicenseKey;
-        if (licenseKey) {
-          setKeywordDetectionLicense(licenseKey);
-          logger.info('DaVoice license key applied');
-        }
-
-        loadModel(
-          [WAKE_WORD_CONFIG],
-          async (phraseDetected: string) => {
-            if (isPausedRef.current) return;
-            logger.info('Wake word detected:', phraseDetected);
-            callbackRef.current?.();
-          }
-        );
+        startNativeListener();
 
         setIsListening(true);
         logger.info('Wake word listening started');
@@ -75,7 +81,7 @@ export function useWakeWord() {
         return false;
       }
     },
-    [loadModel, setKeywordDetectionLicense]
+    [startNativeListener]
   );
 
   const stopWakeWord = useCallback(() => {
@@ -93,13 +99,23 @@ export function useWakeWord() {
 
   const pauseWakeWord = useCallback(() => {
     isPausedRef.current = true;
-    logger.info('Wake word paused');
-  }, []);
+    try {
+      stopListening();
+      logger.info('Wake word paused (native module stopped, mic released)');
+    } catch (error) {
+      logger.error('Failed to pause wake word native module:', error);
+    }
+  }, [stopListening]);
 
   const resumeWakeWord = useCallback(() => {
     isPausedRef.current = false;
-    logger.info('Wake word resumed');
-  }, []);
+    try {
+      startNativeListener();
+      logger.info('Wake word resumed (native module restarted)');
+    } catch (error) {
+      logger.error('Failed to resume wake word native module:', error);
+    }
+  }, [startNativeListener]);
 
   const setLicenseKey = useCallback(
     (licenseKey: string) => {

@@ -12,7 +12,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -24,6 +23,7 @@ import { mira, MiraRecipe, MiraMealPlan } from '../services/mira';
 import { getActiveList, addItem } from '../services/lists';
 import { saveMiraMealPlan } from '../services/mealPlans';
 import { SwipeButton } from './SwipeButton';
+import { MiraAvatar } from './MiraAvatar';
 import { supabase } from '../services/supabase';
 import { logger } from '../utils/logger';
 
@@ -311,11 +311,7 @@ export function MiraFloatingButton() {
         <Pressable onPress={handlePress} style={styles.buttonInner}>
           <View style={styles.buttonBackground} />
           <View style={styles.buttonBorder} />
-          <Image
-            source={require('../../assets/icons/mira_button.png')}
-            style={styles.miraIcon}
-            resizeMode="contain"
-          />
+          <MiraAvatar state="idle" size="small" />
         </Pressable>
         {/* Gold ring glow */}
         <View style={styles.glowRing} />
@@ -614,9 +610,9 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: COLORS.gold.base,
   },
-  miraIcon: {
-    width: BUTTON_SIZE - 4,
-    height: BUTTON_SIZE - 4,
+  miraIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   glowRing: {
     position: 'absolute',

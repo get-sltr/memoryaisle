@@ -220,6 +220,11 @@ User: "Plan dinner for 10, Chicken Parmesan and Pasta with salad and dessert. Ma
 
 IMPORTANT: When users ask for a "shopping list" or say "add to my list" for ANY meal or recipe, use intent "add_items" and populate the items array with all ingredients. Don't just describe what you'd add - actually include them in the items array so they get added to the list automatically.`;
 
+interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface ChatRequest {
   text: string;
   householdId?: string;
@@ -228,6 +233,8 @@ interface ChatRequest {
     currentListItems?: string[];
     recentPurchases?: string[];
     familyDietaryRestrictions?: string;
+    conversationHistory?: ConversationTurn[];
+    speakerName?: string;
   };
 }
 
@@ -372,6 +379,22 @@ serve(async (req) => {
       contextMessage += `\nUse this date to determine if seasonal dietary events are active (Ramadan, Passover, Lent, Navratri, etc.) and proactively mention relevant suggestions.`;
     }
 
+    // Build conversation history messages for GPT
+    const historyMessages: Array<{ role: string; content: string }> = [];
+    if (context?.conversationHistory && context.conversationHistory.length > 0) {
+      for (const turn of context.conversationHistory) {
+        historyMessages.push({
+          role: turn.role === 'user' ? 'user' : 'assistant',
+          content: turn.content,
+        });
+      }
+    }
+
+    // Prepend speaker name to current message if available
+    const userMessage = context?.speakerName
+      ? `[Speaker: ${context.speakerName}] ${text}`
+      : text;
+
     // Call GPT-4o - Full capability model for comprehensive responses
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -384,10 +407,11 @@ serve(async (req) => {
         messages: [
           { role: 'system', content: MIRA_SYSTEM_PROMPT },
           ...(contextMessage ? [{ role: 'system', content: `Context:${contextMessage}` }] : []),
-          { role: 'user', content: text },
+          ...historyMessages,
+          { role: 'user', content: userMessage },
         ],
-        temperature: 0.7, // Slightly more creative for conversational responses
-        max_tokens: 8000, // Large token limit for comprehensive meal plans
+        temperature: 0.7,
+        max_tokens: 8000,
         response_format: { type: 'json_object' },
       }),
     });

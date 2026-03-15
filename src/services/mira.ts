@@ -11,7 +11,6 @@ async function readFileAsBase64(uri: string): Promise<string> {
     const reader = new FileReader();
     reader.onloadend = () => {
       const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:audio/m4a;base64,")
       const base64 = result.split(',')[1] || result;
       resolve(base64);
     };
@@ -45,9 +44,6 @@ async function checkFileExists(uri: string): Promise<{ exists: boolean; size?: n
     return { exists: false };
   }
 }
-
-// Mira - MemoryAisle's AI Assistant
-// Full conversational AI with voice, memory, and personality
 
 // Types
 export interface MiraItem {
@@ -150,8 +146,8 @@ export interface MiraSuggestResponse {
 // Voice settings for Mira
 const MIRA_VOICE_CONFIG = {
   language: 'en-US',
-  pitch: 1.1,      // Slightly higher pitch for friendly tone
-  rate: 1.05,      // Slightly faster, energetic
+  pitch: 1.1,      
+  rate: 1.05,      
 };
 
 class MiraAssistant {
@@ -159,14 +155,10 @@ class MiraAssistant {
   private isRecording = false;
   private isSpeaking = false;
 
-  // Conversation memory - last 10 turns for context
   private conversationHistory: ConversationTurn[] = [];
   private readonly MAX_HISTORY = 10;
-
-  // Speaker context (will be set by Eagle)
   private currentSpeaker: string | null = null;
 
-  // Set current speaker (called by Eagle recognition)
   setSpeaker(speakerId: string | null): void {
     this.currentSpeaker = speakerId;
   }
@@ -175,7 +167,6 @@ class MiraAssistant {
     return this.currentSpeaker;
   }
 
-  // Add to conversation history
   private addToHistory(role: 'user' | 'assistant', content: string): void {
     this.conversationHistory.push({
       role,
@@ -183,25 +174,20 @@ class MiraAssistant {
       timestamp: Date.now(),
     });
 
-    // Keep only recent history
     if (this.conversationHistory.length > this.MAX_HISTORY) {
       this.conversationHistory = this.conversationHistory.slice(-this.MAX_HISTORY);
     }
   }
 
-  // Get recent conversation for context
   getConversationHistory(): ConversationTurn[] {
     return [...this.conversationHistory];
   }
 
-  // Clear conversation (new session)
   clearConversation(): void {
     this.conversationHistory = [];
   }
 
-  // Speak response using TTS
   async speak(text: string): Promise<void> {
-    // Don't speak if already speaking
     if (this.isSpeaking) {
       await Speech.stop();
     }
@@ -223,7 +209,6 @@ class MiraAssistant {
     });
   }
 
-  // Stop speaking
   async stopSpeaking(): Promise<void> {
     if (this.isSpeaking) {
       await Speech.stop();
@@ -231,42 +216,46 @@ class MiraAssistant {
     }
   }
 
-  // Check if Mira is currently speaking
   getIsSpeaking(): boolean {
     return this.isSpeaking;
   }
 
-  // Start listening
+  private async releaseMicrophone(): Promise<void> {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+    } catch (e) {
+      logger.error('Failed to release microphone:', e);
+    }
+  }
+
+  // Wake word detection is handled by useWakeWord() hook in wakeWord.ts
+  // This class only handles expo-av recording after wake word triggers
   async startListening(): Promise<boolean> {
     try {
-      // Stop any ongoing speech
       await this.stopSpeaking();
 
-      // Clean up any existing recording first
       if (this.recording) {
         try {
           await this.recording.stopAndUnloadAsync();
-        } catch (e) {
-          // Ignore cleanup errors
-        }
+        } catch (e) {}
         this.recording = null;
         this.isRecording = false;
       }
 
-      // Request permissions
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
         logger.error('Audio permission not granted');
         return false;
       }
 
-      // Configure audio mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
 
-      // Start recording
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
@@ -276,21 +265,19 @@ class MiraAssistant {
       return true;
     } catch (error) {
       logger.error('Failed to start recording:', error);
-      // Clean up on error
       this.recording = null;
       this.isRecording = false;
+      await this.releaseMicrophone();
       return false;
     }
   }
 
-  // Stop listening and process with AI
   async stopListening(context?: {
     currentListItems?: string[];
     recentPurchases?: string[];
     speakerName?: string;
   }): Promise<MiraChatResponse> {
     if (!this.recording || !this.isRecording) {
-      logger.error('stopListening called but not recording');
       return {
         success: false,
         intent: 'error',
@@ -300,17 +287,18 @@ class MiraAssistant {
       };
     }
 
+    let uri: string | null = null;
+
     try {
       this.isRecording = false;
-      logger.info('Stopping recording...');
       await this.recording.stopAndUnloadAsync();
-
-      const uri = this.recording.getURI();
-      logger.info('Recording URI:', uri);
+      
+      uri = this.recording.getURI();
       this.recording = null;
 
+      await this.releaseMicrophone();
+
       if (!uri) {
-        logger.error('No URI from recording');
         return {
           success: false,
           intent: 'error',
@@ -320,9 +308,7 @@ class MiraAssistant {
         };
       }
 
-      // Check if file exists and has content
       const fileInfo = await checkFileExists(uri);
-      logger.info('Audio file info:', fileInfo);
 
       if (!fileInfo.exists) {
         return {
@@ -334,19 +320,12 @@ class MiraAssistant {
         };
       }
 
-      // Process with conversation context
-      logger.info('Sending to transcribe...');
       const result = await this.transcribeAndParse(uri, {
         ...context,
         conversationHistory: this.conversationHistory,
         speakerName: context?.speakerName || this.currentSpeaker || undefined,
       });
-      logger.info('Transcribe result:', result.success, result.error);
 
-      // Clean up audio file after processing (privacy + storage)
-      deleteAudioFile(uri).catch(() => {});
-
-      // Add to history
       if (result.transcription) {
         this.addToHistory('user', result.transcription);
       }
@@ -364,10 +343,13 @@ class MiraAssistant {
         response: 'Voice processing failed',
         error: `Stop recording error: ${error.message}`,
       };
+    } finally {
+      if (uri) {
+        deleteAudioFile(uri).catch(() => {});
+      }
     }
   }
 
-  // Stop listening, process, and speak response
   async stopListeningAndRespond(context?: {
     currentListItems?: string[];
     recentPurchases?: string[];
@@ -375,7 +357,6 @@ class MiraAssistant {
   }): Promise<MiraChatResponse> {
     const result = await this.stopListening(context);
 
-    // Speak the response
     if (result.success && result.response) {
       await this.speak(result.response);
     }
@@ -383,20 +364,17 @@ class MiraAssistant {
     return result;
   }
 
-  // Cancel recording
   async cancelListening(): Promise<void> {
     if (this.recording) {
       try {
         await this.recording.stopAndUnloadAsync();
-      } catch (e) {
-        // Ignore errors when canceling
-      }
+      } catch (e) {}
       this.recording = null;
       this.isRecording = false;
     }
+    await this.releaseMicrophone();
   }
 
-  // Transcribe + Parse with conversation context
   private async transcribeAndParse(
     uri: string,
     context?: {
@@ -407,7 +385,6 @@ class MiraAssistant {
     }
   ): Promise<MiraChatResponse> {
     try {
-      // Read file as base64 using fetch (avoids expo-file-system deprecation)
       const base64 = await readFileAsBase64(uri);
 
       if (!base64 || base64.length === 0) {
@@ -420,7 +397,6 @@ class MiraAssistant {
         };
       }
 
-      // Call Edge Function with full context
       const { data, error } = await supabase.functions.invoke('mira-transcribe', {
         body: {
           audio: base64,
@@ -428,7 +404,7 @@ class MiraAssistant {
           context: {
             currentListItems: context?.currentListItems,
             recentPurchases: context?.recentPurchases,
-            conversationHistory: context?.conversationHistory?.slice(-5), // Last 5 turns
+            conversationHistory: context?.conversationHistory?.slice(-5),
             speakerName: context?.speakerName,
           },
         },
@@ -474,7 +450,6 @@ class MiraAssistant {
     }
   }
 
-  // Process text directly (for typed input)
   async processText(
     text: string,
     context?: {
@@ -485,7 +460,6 @@ class MiraAssistant {
     }
   ): Promise<MiraChatResponse> {
     try {
-      // Add to history
       this.addToHistory('user', text);
 
       const { data, error } = await supabase.functions.invoke('mira-chat', {
@@ -519,7 +493,6 @@ class MiraAssistant {
         mealPlan: data.mealPlan || undefined,
       };
 
-      // Add response to history
       if (result.success && result.response) {
         this.addToHistory('assistant', result.response);
       }
@@ -537,7 +510,6 @@ class MiraAssistant {
     }
   }
 
-  // Process text and speak response
   async processTextAndRespond(
     text: string,
     context?: {
@@ -555,7 +527,6 @@ class MiraAssistant {
     return result;
   }
 
-  // Get suggestions based on purchase patterns
   async getSuggestions(householdId: string): Promise<MiraSuggestResponse> {
     try {
       const { data, error } = await supabase.functions.invoke('mira-suggest', {
@@ -588,7 +559,6 @@ class MiraAssistant {
     }
   }
 
-  // Greet user (with optional name from speaker recognition)
   async greet(speakerName?: string): Promise<void> {
     let greeting: string;
 
@@ -606,16 +576,10 @@ class MiraAssistant {
     await this.speak(greeting);
   }
 
-  // Get recording status
   getIsRecording(): boolean {
     return this.isRecording;
   }
 
-  // =============================================
-  // DIRECT DICTATION MODE - Fast item entry
-  // =============================================
-
-  // Quick dictate - just items, no conversation
   async quickDictate(): Promise<{
     success: boolean;
     items: MiraItem[];
@@ -631,12 +595,16 @@ class MiraAssistant {
       };
     }
 
+    let uri: string | null = null;
+
     try {
       this.isRecording = false;
       await this.recording.stopAndUnloadAsync();
 
-      const uri = this.recording.getURI();
+      uri = this.recording.getURI();
       this.recording = null;
+      
+      await this.releaseMicrophone();
 
       if (!uri) {
         return {
@@ -647,10 +615,8 @@ class MiraAssistant {
         };
       }
 
-      // Read file as base64 using fetch (avoids expo-file-system deprecation)
       const base64 = await readFileAsBase64(uri);
 
-      // Call fast dictation Edge Function
       const { data, error } = await supabase.functions.invoke('mira-dictate', {
         body: {
           audio: base64,
@@ -682,10 +648,13 @@ class MiraAssistant {
         transcription: '',
         message: 'Something went wrong',
       };
+    } finally {
+      if (uri) {
+        deleteAudioFile(uri).catch(() => {});
+      }
     }
   }
 
-  // Quick dictate and speak result
   async quickDictateAndRespond(): Promise<{
     success: boolean;
     items: MiraItem[];
@@ -704,10 +673,8 @@ class MiraAssistant {
   }
 }
 
-// Export singleton instance
 export const mira = new MiraAssistant();
 
-// Mira's personality responses - Full Family Companion
 export const miraResponses = {
   greeting: [
     "Hey! What's on your mind?",

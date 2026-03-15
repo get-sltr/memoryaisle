@@ -20,18 +20,18 @@ export interface ReceiptScanResult {
 }
 
 class ReceiptService {
-  // Take photo or pick from gallery
+  // Take a fresh photo with the camera
   async captureReceipt(): Promise<string | null> {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        logger.log('Camera permission denied');
+        logger.error('Camera permission denied');
         return null;
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Fixed enum
+        quality: 0.5, // Lowered to 0.5 to prevent Edge Function payload crashes
         base64: true,
       });
 
@@ -42,6 +42,32 @@ class ReceiptService {
       return result.assets[0].base64;
     } catch (error) {
       logger.error('Failed to capture receipt:', error);
+      return null;
+    }
+  }
+
+  // Pick an existing photo from the gallery
+  async pickFromGallery(): Promise<string | null> {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        logger.error('Gallery permission denied');
+        return null;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Fixed enum
+        quality: 0.5, // Lowered to 0.5 to prevent Edge Function payload crashes
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets[0]?.base64) {
+        return null;
+      }
+
+      return result.assets[0].base64;
+    } catch (error) {
+      logger.error('Failed to pick receipt from gallery:', error);
       return null;
     }
   }

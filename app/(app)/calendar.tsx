@@ -78,30 +78,48 @@ export default function CalendarScreen() {
   const culturalPrefs = familyProfile.culturalPreferences || ['secular'];
   const weeklyTraditions = familyProfile.weeklyTraditions || [];
 
-  // Fetch meals for the selected month
+  // Fetch meals for the selected month (with memory leak patch)
   useEffect(() => {
+    let isMounted = true;
     if (!household?.id) return;
+    
     const year = selectedDate.getFullYear();
     const month = selectedDate.getMonth();
     const start = new Date(year, month, 1);
     const end = new Date(year, month + 1, 0);
+    
     getMealPlansForDateRange(household.id, start, end)
-      .then(setMonthMeals)
-      .catch(() => setMonthMeals([]));
+      .then((data) => {
+        if (isMounted) setMonthMeals(data);
+      })
+      .catch(() => {
+        if (isMounted) setMonthMeals([]);
+      });
+
+    return () => { isMounted = false; };
   }, [household?.id, selectedDate.getFullYear(), selectedDate.getMonth()]);
 
-  // Fetch today's meals for the upcoming view
+  // Fetch today's meals for the upcoming view (with memory leak patch)
   useEffect(() => {
+    let isMounted = true;
     if (!household?.id) return;
+    
     getMealsForDate(household.id, new Date())
-      .then(setTodayMeals)
-      .catch(() => setTodayMeals([]));
+      .then((data) => {
+        if (isMounted) setTodayMeals(data);
+      })
+      .catch(() => {
+        if (isMounted) setTodayMeals([]);
+      });
+
+    return () => { isMounted = false; };
   }, [household?.id]);
 
   // Map cultural preferences to holiday categories
   const relevantCategories = useMemo(() => {
     const categories: HolidayCategory[] = [];
-    culturalPrefs.forEach(pref => {
+    // Fallback added in case culturalPrefs evaluates to explicitly null
+    (culturalPrefs || []).forEach(pref => {
       categories.push(...CULTURE_TO_CATEGORY[pref]);
     });
     return [...new Set(categories)];
@@ -300,8 +318,13 @@ export default function CalendarScreen() {
 
   // Check if a day has events
   const getDayEvents = (day: number) => {
-    const date = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
-    const dateStr = date.toISOString().split('T')[0];
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth();
+    const date = new Date(year, month, day);
+    
+    // FIX: Using local string formatting to avoid UTC timezone off-by-one errors
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    
     const holidays = monthHolidays.filter(h => h.date.getDate() === day);
     const traditions = weeklyTraditions.filter(t => t.dayOfWeek === date.getDay() && t.isActive);
     const meals = monthMeals.filter(m => m.date === dateStr);
