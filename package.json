@@ -64,7 +64,9 @@
   "overrides": {
     "@isaacs/brace-expansion": ">=5.0.1",
     "minimatch": ">=10.2.1",
-    "tar": ">=7.5.10"
+    "tar": ">=7.5.10",
+    "undici": ">=6.24.1",
+    "flatted": ">=3.4.0"
   },
   "private": true
 }
