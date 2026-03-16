@@ -52,15 +52,19 @@ export function useWakeWord() {
   }, [setKeywordDetectionLicense]);
 
   const startNativeListener = useCallback(() => {
-    applyLicenseKey();
-    loadModel(
-      [WAKE_WORD_CONFIG],
-      async (phraseDetected: string) => {
-        if (isPausedRef.current) return;
-        logger.info('Wake word detected:', phraseDetected);
-        callbackRef.current?.();
-      }
-    );
+    try {
+      applyLicenseKey();
+      loadModel(
+        [WAKE_WORD_CONFIG],
+        async (phraseDetected: string) => {
+          if (isPausedRef.current) return;
+          logger.info('Wake word detected:', phraseDetected);
+          callbackRef.current?.();
+        }
+      );
+    } catch (error) {
+      logger.warn('Wake word model failed to load (model may be missing):', error);
+    }
   }, [loadModel, applyLicenseKey]);
 
   const startWakeWord = useCallback(

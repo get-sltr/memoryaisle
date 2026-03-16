@@ -475,11 +475,14 @@ class MiraAssistant {
 
       if (error) {
         logger.error('AI processing error:', error);
+        const isAuthError = error.message?.includes('non-2xx') || error.message?.includes('401');
         return {
           success: false,
           intent: 'error',
           items: [],
-          response: getRandomResponse('error'),
+          response: isAuthError
+            ? "Please sign in to chat with me!"
+            : getRandomResponse('error'),
           error: error.message,
         };
       }
