@@ -17,6 +17,7 @@ import {
   Animated,
   Dimensions,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 
 // Enable LayoutAnimation for Android
