@@ -129,6 +129,12 @@ export function SubscriptionModal({
               <Text style={styles.premiumSubtitle}>
                 Enjoy unlimited access to all features
               </Text>
+              <Pressable
+                style={styles.manageButton}
+                onPress={() => Linking.openURL('https://apps.apple.com/account/subscriptions')}
+              >
+                <Text style={styles.manageButtonText}>Manage Subscription</Text>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -436,5 +442,17 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text.secondary,
     marginTop: SPACING.xs,
+  },
+  manageButton: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.gold.base,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  manageButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.white,
   },
 });

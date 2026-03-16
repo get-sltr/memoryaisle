@@ -8,11 +8,13 @@ import {
   StyleSheet,
   Pressable,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, SHADOWS } from '../constants/theme';
 import { SubscriptionModal } from './SubscriptionModal';
+import { useSubscription } from '../hooks/useSubscription';
 import { FeatureKey } from '../services/iap';
 
 interface PaywallPromptProps {
@@ -106,6 +108,8 @@ export function PaywallPrompt({
 }: PaywallPromptProps) {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
+  const [isRestoring, setIsRestoring] = useState(false);
+  const { restorePurchases } = useSubscription();
 
   const featureInfo = FEATURE_MESSAGES[feature] || {
     title: 'Premium Feature',
@@ -173,6 +177,28 @@ export function PaywallPrompt({
 
             <Pressable style={styles.dismissButton} onPress={onClose}>
               <Text style={styles.dismissText}>Maybe Later</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.restoreButton}
+              onPress={async () => {
+                setIsRestoring(true);
+                try {
+                  const success = await restorePurchases();
+                  if (success) onClose();
+                } finally {
+                  setIsRestoring(false);
+                }
+              }}
+              disabled={isRestoring}
+              accessibilityRole="button"
+              accessibilityLabel="Restore previous purchases"
+            >
+              {isRestoring ? (
+                <ActivityIndicator color={COLORS.text.secondary} size="small" />
+              ) : (
+                <Text style={styles.restoreText}>Restore Purchases</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -320,6 +346,15 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text.secondary,
     fontWeight: '500',
+  },
+  restoreButton: {
+    paddingVertical: SPACING.xs,
+    alignItems: 'center',
+  },
+  restoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text.secondary,
+    textDecorationLine: 'underline',
   },
 
   // Banner styles
