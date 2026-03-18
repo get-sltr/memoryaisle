@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo, useRef, type RefObject } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+import { Swipeable } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
@@ -53,6 +54,8 @@ import {
   addItem,
   completeItem,
   deleteItem,
+  updateItemName,
+  updateItemQuantity,
 } from '../../src/services/lists';
 import { mira } from '../../src/services/mira';
 import { useWakeWord } from '../../src/services/wakeWord';
@@ -361,6 +364,47 @@ function MainList() {
     if (!success && list) reloadListData(list.id);
   }, [list, reloadListData]);
 
+  const handleDeleteItem = useCallback(async (itemId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setItems(curr => curr.filter(i => i.id !== itemId));
+    const success = await deleteItem(itemId);
+    if (!success && list) reloadListData(list.id);
+  }, [list, reloadListData]);
+
+  const handleEditItem = useCallback((item: ListItem) => {
+    Alert.alert('Edit Item', undefined, [
+      {
+        text: 'Rename',
+        onPress: () => {
+          Alert.prompt('Rename Item', undefined, async (newName) => {
+            if (!newName?.trim() || newName.trim() === item.name) return;
+            setItems(curr => curr.map(i => i.id === item.id ? { ...i, name: newName.trim() } : i));
+            const success = await updateItemName(item.id, newName.trim());
+            if (!success && list) reloadListData(list.id);
+          }, 'plain-text', item.name);
+        },
+      },
+      {
+        text: 'Change Quantity',
+        onPress: () => {
+          Alert.prompt('Quantity', undefined, async (val) => {
+            const qty = parseInt(val, 10);
+            if (!qty || qty < 1 || qty === item.quantity) return;
+            setItems(curr => curr.map(i => i.id === item.id ? { ...i, quantity: qty } : i));
+            const success = await updateItemQuantity(item.id, qty);
+            if (!success && list) reloadListData(list.id);
+          }, 'plain-text', String(item.quantity || 1));
+        },
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => handleDeleteItem(item.id),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [list, reloadListData, handleDeleteItem]);
+
   const handleSignOut = async () => {
     await signOut();
     useAuthStore.getState().signOut();
@@ -434,8 +478,8 @@ function MainList() {
                 );
               }}
               renderItem={({ item, section }) => (
-                !collapsedCategories.has(section.categoryId) && (
-                  <ListItemCard item={item} onComplete={handleCompleteItem} categoryColor={section.categoryInfo.color} />
+                collapsedCategories.has(section.categoryId) ? null : (
+                  <ListItemCard item={item} onComplete={handleCompleteItem} onDelete={handleDeleteItem} onEdit={handleEditItem} categoryColor={section.categoryInfo.color} />
                 )
               )}
               ListFooterComponent={<View style={{ height: 200 }} />}
@@ -520,17 +564,39 @@ const CategoryHeader = memo(({ category, count, IconComponent, isCollapsed, onTo
   </Pressable>
 ));
 
-const ListItemCard = memo(({ item, onComplete, categoryColor }: any) => (
-  <Pressable onPress={() => onComplete(item.id)} style={styles.listItem}>
-    <BlurView intensity={25} tint="light" style={StyleSheet.absoluteFill} />
-    <View style={[styles.listItemBorder, { borderLeftColor: categoryColor, borderLeftWidth: 3 }]} />
-    <View style={styles.listItemContent}>
-      <View style={styles.checkbox} />
-      <Text style={styles.itemName}>{item.name}</Text>
-      {item.quantity > 1 && <View style={styles.qtyBadge}><Text style={styles.qtyText}>{item.quantity}</Text></View>}
-    </View>
-  </Pressable>
-));
+const SwipeDeleteAction = () => (
+  <View style={styles.swipeDeleteAction}>
+    <Text style={styles.swipeDeleteText}>Delete</Text>
+  </View>
+);
+
+const ListItemCard = memo(({ item, onComplete, onDelete, onEdit, categoryColor }: any) => {
+  const swipeRef = useRef<Swipeable>(null);
+  return (
+    <Swipeable
+      ref={swipeRef}
+      renderRightActions={SwipeDeleteAction}
+      onSwipeableOpen={() => { swipeRef.current?.close(); onDelete(item.id); }}
+      overshootRight={false}
+      friction={2}
+    >
+      <Pressable
+        onPress={() => onComplete(item.id)}
+        onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onEdit(item); }}
+        delayLongPress={400}
+        style={styles.listItem}
+      >
+        <BlurView intensity={25} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={[styles.listItemBorder, { borderLeftColor: categoryColor, borderLeftWidth: 3 }]} />
+        <View style={styles.listItemContent}>
+          <View style={styles.checkbox} />
+          <Text style={styles.itemName}>{item.name}</Text>
+          {item.quantity > 1 && <View style={styles.qtyBadge}><Text style={styles.qtyText}>{item.quantity}</Text></View>}
+        </View>
+      </Pressable>
+    </Swipeable>
+  );
+});
 
 function StatCard({ value, label, isGold }: any) {
   return (
@@ -570,6 +636,8 @@ const styles = StyleSheet.create({
   categoryTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: COLORS.text.primary },
   categoryCountBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   categoryCountText: { fontSize: 11, fontWeight: '700', color: COLORS.text.secondary },
+  swipeDeleteAction: { backgroundColor: '#E74C3C', justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 20, borderRadius: 12, marginBottom: 6 },
+  swipeDeleteText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   listItem: { borderRadius: 12, overflow: 'hidden', marginBottom: 6 },
   listItemBorder: { ...StyleSheet.absoluteFillObject, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.3)', borderRadius: 12 },
   listItemContent: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },

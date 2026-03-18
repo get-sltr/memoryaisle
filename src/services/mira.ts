@@ -158,6 +158,9 @@ class MiraAssistant {
   private conversationHistory: ConversationTurn[] = [];
   private readonly MAX_HISTORY = 10;
   private currentSpeaker: string | null = null;
+  private userId: string | null = null;
+  private saveHistory = true;
+  private historyLoaded = false;
 
   setSpeaker(speakerId: string | null): void {
     this.currentSpeaker = speakerId;
@@ -165,6 +168,77 @@ class MiraAssistant {
 
   getCurrentSpeaker(): string | null {
     return this.currentSpeaker;
+  }
+
+  /** Call once after auth to enable DB persistence */
+  async initUser(userId: string): Promise<void> {
+    this.userId = userId;
+    await this.loadSavePreference();
+    await this.loadHistoryFromDB();
+  }
+
+  /** Reset on sign out */
+  resetUser(): void {
+    this.userId = null;
+    this.saveHistory = true;
+    this.historyLoaded = false;
+    this.conversationHistory = [];
+  }
+
+  private async loadSavePreference(): Promise<void> {
+    if (!this.userId) return;
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('profile')
+        .eq('id', this.userId)
+        .single();
+      if (data?.profile?.save_mira_history !== undefined) {
+        this.saveHistory = data.profile.save_mira_history;
+      }
+    } catch {
+      // Default to saving
+    }
+  }
+
+  setSaveHistory(value: boolean): void {
+    this.saveHistory = value;
+  }
+
+  private async loadHistoryFromDB(): Promise<void> {
+    if (!this.userId || !this.saveHistory) return;
+    try {
+      const { data } = await supabase
+        .from('mira_conversations')
+        .select('role, content, created_at')
+        .eq('user_id', this.userId)
+        .order('created_at', { ascending: true })
+        .limit(this.MAX_HISTORY);
+
+      if (data && data.length > 0) {
+        this.conversationHistory = data.map((row) => ({
+          role: row.role as 'user' | 'assistant',
+          content: row.content,
+          timestamp: new Date(row.created_at).getTime(),
+        }));
+      }
+      this.historyLoaded = true;
+    } catch (e) {
+      logger.error('Failed to load Mira history:', e);
+    }
+  }
+
+  private async persistTurn(role: 'user' | 'assistant', content: string): Promise<void> {
+    if (!this.userId || !this.saveHistory) return;
+    try {
+      await supabase.from('mira_conversations').insert({
+        user_id: this.userId,
+        role,
+        content,
+      });
+    } catch (e) {
+      logger.error('Failed to persist Mira turn:', e);
+    }
   }
 
   private addToHistory(role: 'user' | 'assistant', content: string): void {
@@ -177,6 +251,8 @@ class MiraAssistant {
     if (this.conversationHistory.length > this.MAX_HISTORY) {
       this.conversationHistory = this.conversationHistory.slice(-this.MAX_HISTORY);
     }
+
+    this.persistTurn(role, content);
   }
 
   getConversationHistory(): ConversationTurn[] {

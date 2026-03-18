@@ -240,6 +240,22 @@ export async function updateItemQuantity(itemId: string, quantity: number): Prom
   }
 }
 
+// Update item name
+export async function updateItemName(itemId: string, name: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('list_items')
+      .update({ name: name.trim() })
+      .eq('id', itemId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    logger.error('Error updating item name:', error);
+    return false;
+  }
+}
+
 // Subscribe to realtime list changes
 export function subscribeToList(
   listId: string,

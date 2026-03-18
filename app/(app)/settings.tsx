@@ -19,6 +19,7 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { ScreenWrapper } from '../../src/components/ScreenWrapper';
 import { logger } from '../../src/utils/logger';
+import { mira } from '../../src/services/mira';
 import { SubscriptionModal } from '../../src/components/SubscriptionModal';
 import { useSubscription } from '../../src/hooks/useSubscription';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -167,6 +168,7 @@ export default function SettingsScreen() {
         .eq('id', user.id);
 
       if (error) throw error;
+      mira.setSaveHistory(value);
     } catch {
       // Revert the toggle on failure
       setSaveMiraHistory(previousValue);

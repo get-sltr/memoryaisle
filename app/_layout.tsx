@@ -66,7 +66,7 @@ export default function RootLayout() {
     try { useSubscriptionStore.getState().cleanup(); } catch {}
     try { useListStore.getState().reset(); } catch {}
     try { realtimeSync.disconnect(); } catch {}
-    try { mira.clearConversation(); } catch {}
+    try { mira.resetUser(); } catch {}
   }, []);
 
   const initIAP = useCallback((userId: string) => {
@@ -161,7 +161,11 @@ export default function RootLayout() {
   }, [isReady, rootNavigationState?.key, router]);
 
   const initServicesForUser = useCallback(async (userId: string, householdId?: string | null) => {
-    // Order: errorTracking -> notifications -> geofence -> IAP
+    // Order: mira -> notifications -> geofence -> IAP
+    try {
+      await mira.initUser(userId);
+    } catch {}
+
     try {
       await initNotifications(userId);
     } catch {}
