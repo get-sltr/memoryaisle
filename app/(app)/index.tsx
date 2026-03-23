@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, memo, useRef, type RefObject } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
-import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -60,13 +59,8 @@ import {
 import { mira } from '../../src/services/mira';
 import { useWakeWord } from '../../src/services/wakeWord';
 import { useRealtimeSync } from '../../src/hooks/useRealtimeSync';
-import type { SyncCallback } from '../../src/services/realtimeSync';
 import {
   COLORS,
-  FONT_SIZES,
-  SPACING,
-  BORDER_RADIUS,
-  SHADOWS,
 } from '../../src/constants/theme';
 import { useThemeStore } from '../../src/stores/themeStore';
 import { FamilyIcon } from '../../src/components/icons';
@@ -85,7 +79,7 @@ import {
   CalendarGlassIcon,
   TripGlassIcon,
 } from '../../src/components/GlassIcons';
-import { ALLERGENS, checkSelfAllergen, formatSelfAllergyAlert } from '../../src/utils/allergenDetection';
+import { checkSelfAllergen, formatSelfAllergyAlert } from '../../src/utils/allergenDetection';
 import { groupItemsByCategory, getCategoryInfo, CATEGORY_ORDER, preloadKeywords, type GroceryCategory } from '../../src/utils/categoryDetection';
 import type { ListItem, GroceryList as GroceryListType } from '../../src/types';
 import { notificationService } from '../../src/services/notifications';
@@ -165,14 +159,16 @@ function MainList() {
     preloadKeywords().then(() => setKeywordsReady(true)).catch(() => {});
     AsyncStorage.getItem('hasSeenOnboarding').then((val) => {
       if (!val) setShowOnboarding(true);
-    });
+    }).catch(() => {});
   }, []);
 
   const listRef = useRef(list);
+  const itemsRef = useRef(items);
   const isDictatingRef = useRef(isDictating);
   const isProcessingRef = useRef(isProcessingDictation);
   const wakeWordAutoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { listRef.current = list; }, [list]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
   useEffect(() => { isDictatingRef.current = isDictating; }, [isDictating]);
   useEffect(() => { isProcessingRef.current = isProcessingDictation; }, [isProcessingDictation]);
 
@@ -238,7 +234,7 @@ function MainList() {
       mira.speak(`You're at ${store.name}. Here's your list!`);
       setTimeout(() => setArrivedStore(null), 10000);
     }, (store) => {
-      if (items.length > 0) {
+      if (itemsRef.current.length > 0) {
         mira.speak("Wait! Scan your receipt before you leave.");
         setMiraStatus("Scan receipt!");
         setTimeout(() => setMiraStatus(null), 8000);
@@ -303,7 +299,7 @@ function MainList() {
       setAllLists(lists);
       setLoading(false);
     }
-    loadList();
+    loadList().catch(() => setLoading(false));
   }, [household, reloadListData]);
 
   const switchToList = useCallback(async (targetList: GroceryListType) => {

@@ -21,18 +21,16 @@ const initConnection = iapModule?.initConnection ?? (async () => false);
 const endConnection = iapModule?.endConnection ?? (async () => {});
 const finishTransaction = iapModule?.finishTransaction ?? (async () => {});
 const getAvailablePurchases = iapModule?.getAvailablePurchases ?? (async () => []);
-const restorePurchasesIOS = iapModule?.clearTransactionIOS ?? null;
+const syncIOS = iapModule?.syncIOS ?? (async () => false);
 const purchaseUpdatedListener =
   iapModule?.purchaseUpdatedListener ?? (() => ({ remove: () => {} }));
 const purchaseErrorListener =
   iapModule?.purchaseErrorListener ?? (() => ({ remove: () => {} }));
 
 const fetchProducts =
-  iapModule?.getSubscriptions ??
   iapModule?.fetchProducts ??
   (async (_args: any) => []);
 const requestPurchase =
-  iapModule?.requestSubscription ??
   iapModule?.requestPurchase ??
   (async (_args: any) => {});
 
@@ -334,48 +332,35 @@ class IAPService {
     this.removeTransactionListeners();
 
     this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-      let verified = false;
-      try {
-        verified = await verifyWithServer(purchase);
-      } catch (e: any) {
-        logger.warn("IAP: verify failed during purchase", { message: e?.message });
-      }
-
-      if (!verified) {
-        await delay(1500);
-        try {
-          verified = await verifyWithServer(purchase);
-        } catch (e: any) {
-          logger.warn("IAP: verify retry failed", { message: e?.message });
-        }
-      }
-
+      // StoreKit 2 transactions are signed and verified on-device by the OS.
+      // Resolve the purchase as successful IMMEDIATELY so the user isn't blocked.
+      // Server verification runs in the background; Apple Server Notifications V2
+      // remain the authoritative source of truth for subscription state.
       await safeFinishTransaction(purchase);
 
       if (this.purchaseResolver) {
-        if (verified) {
-          this.purchaseResolver({ status: "success" });
-        } else {
-          // Third attempt after finishing transaction
-          await delay(2000);
-          try {
-            verified = await verifyWithServer(purchase);
-          } catch {}
-
-          if (verified) {
-            this.purchaseResolver({ status: "success" });
-          } else {
-            logger.error("IAP: server verify failed after 3 attempts, OS purchase succeeded");
-            this.purchaseResolver({
-              status: "error",
-              message: "Your purchase was completed but activation failed. Please tap Restore Purchases to unlock your subscription.",
-            });
-          }
-        }
+        this.purchaseResolver({ status: "success" });
         this.cleanupPurchaseState();
       }
 
       this.notifyStatusChange();
+
+      // Background server verification (fire-and-forget with retries)
+      (async () => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const ok = await verifyWithServer(purchase);
+            if (ok) {
+              logger.info("IAP: background verify succeeded", { attempt });
+              return;
+            }
+          } catch (e: any) {
+            logger.warn("IAP: background verify attempt failed", { attempt, message: e?.message });
+          }
+          await delay(2000 * attempt);
+        }
+        logger.warn("IAP: background verify failed after 3 attempts – Apple Server Notifications will reconcile");
+      })();
     });
 
     this.purchaseErrorSub = purchaseErrorListener(async (err: PurchaseError) => {
@@ -478,7 +463,8 @@ class IAPService {
       });
 
       await requestPurchase({
-        sku: IAP_PRODUCTS.PREMIUM_MONTHLY,
+        request: { apple: { sku: IAP_PRODUCTS.PREMIUM_MONTHLY } },
+        type: "subs",
       });
 
       return resultPromise;
@@ -510,8 +496,8 @@ class IAPService {
     if (!(await this.safeInitialize(3))) return false;
 
     try {
-      if (restorePurchasesIOS) {
-        try { await restorePurchasesIOS(); } catch {}
+      if (Platform.OS === "ios") {
+        try { await syncIOS(); } catch {}
       }
 
       const purchases = await getAvailablePurchases();
