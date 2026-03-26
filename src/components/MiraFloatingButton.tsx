@@ -234,7 +234,7 @@ export function MiraFloatingButton() {
       setIsLoading(false);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  }, [inputText, isLoading, household?.id]);
+  }, [inputText, isLoading, household?.id, familyDietaryInfo]);
 
   const handleAddRecipeToList = useCallback(async (recipe: MiraRecipe) => {
     if (!household?.id) return;

@@ -162,6 +162,25 @@ class MiraAssistant {
   private saveHistory = true;
   private historyLoaded = false;
 
+  /** Ensure the Supabase session token is fresh before edge function calls */
+  private async ensureFreshSession(): Promise<void> {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error || !session) {
+        logger.warn('No active session for Mira');
+        return;
+      }
+      // If the token expires within 60s, force a refresh now
+      const expiresAt = session.expires_at ?? 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (expiresAt - nowSec < 60) {
+        await supabase.auth.refreshSession();
+      }
+    } catch (e) {
+      logger.error('Session refresh failed:', e);
+    }
+  }
+
   setSpeaker(speakerId: string | null): void {
     this.currentSpeaker = speakerId;
   }
@@ -461,6 +480,7 @@ class MiraAssistant {
     }
   ): Promise<MiraChatResponse> {
     try {
+      await this.ensureFreshSession();
       const base64 = await readFileAsBase64(uri);
 
       if (!base64 || base64.length === 0) {
@@ -536,6 +556,12 @@ class MiraAssistant {
     }
   ): Promise<MiraChatResponse> {
     try {
+      // Ensure token is fresh before calling edge function
+      await this.ensureFreshSession();
+
+      // Capture history BEFORE adding the new user turn, so GPT doesn't
+      // see the current message twice (once in history, once as `text`).
+      const priorHistory = this.conversationHistory.slice(-5);
       this.addToHistory('user', text);
 
       const { data, error } = await supabase.functions.invoke('mira-chat', {
@@ -543,7 +569,7 @@ class MiraAssistant {
           text,
           context: {
             ...context,
-            conversationHistory: this.conversationHistory.slice(-5),
+            conversationHistory: priorHistory,
             speakerName: context?.speakerName || this.currentSpeaker || undefined,
           },
         },
@@ -551,14 +577,35 @@ class MiraAssistant {
 
       if (error) {
         logger.error('AI processing error:', error);
-        const isAuthError = error.message?.includes('non-2xx') || error.message?.includes('401');
+
+        // supabase.functions.invoke wraps non-2xx responses as FunctionsHttpError.
+        // The response body (with the real error message) is in error.context.
+        let serverMessage: string | null = null;
+        let statusCode: number | null = null;
+        try {
+          // FunctionsHttpError stores the Response object in context
+          const ctx = (error as any).context;
+          if (ctx instanceof Response) {
+            statusCode = ctx.status;
+            const body = await ctx.json();
+            serverMessage = body?.response || body?.message || null;
+          }
+        } catch {
+          // Failed to parse - fall through to defaults
+        }
+
+        const isAuthError = statusCode === 401;
+        const isQuotaError = statusCode === 429;
+
         return {
           success: false,
           intent: 'error',
           items: [],
-          response: isAuthError
+          response: isQuotaError
+            ? (serverMessage || "You've reached your daily limit. Upgrade to Premium for unlimited!")
+            : isAuthError
             ? "Please sign in to chat with me!"
-            : getRandomResponse('error'),
+            : (serverMessage || getRandomResponse('error')),
           error: error.message,
         };
       }
@@ -682,7 +729,7 @@ class MiraAssistant {
 
       uri = this.recording.getURI();
       this.recording = null;
-      
+
       await this.releaseMicrophone();
 
       if (!uri) {
@@ -694,6 +741,7 @@ class MiraAssistant {
         };
       }
 
+      await this.ensureFreshSession();
       const base64 = await readFileAsBase64(uri);
 
       const { data, error } = await supabase.functions.invoke('mira-dictate', {
